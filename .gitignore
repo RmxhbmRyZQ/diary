@@ -1,0 +1,14 @@
+diary-web/.claude/
+diary-web/.agents/
+diary-web/.idea/
+diary-web/node_modules/
+diary-web/skills-lock.json
+diary-web/需求文档.md
+diary-web/接口文档.md
+
+diary-backend/.claude/
+diary-backend/target/
+diary-backend/.idea/
+diary-backend/attachments/
+diary-backend/需求文档.md
+diary-backend/接口文档.md
