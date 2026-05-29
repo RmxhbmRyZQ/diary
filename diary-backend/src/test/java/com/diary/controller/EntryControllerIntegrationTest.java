@@ -20,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -172,6 +173,7 @@ class EntryControllerIntegrationTest {
         saveEntryDirectly(UUID.randomUUID().toString(), 1, "payload-2");
 
         mockMvc.perform(get("/api/v1/entries/sync")
+                        .param("clientTime", Instant.now().toString())
                         .requestAttr("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))

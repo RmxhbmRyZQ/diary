@@ -12,3 +12,9 @@ diary-backend/.idea/
 diary-backend/attachments/
 diary-backend/需求文档.md
 diary-backend/接口文档.md
+
+diary-android/.claude/
+diary-android/target/
+diary-android/.idea/
+diary-android/需求文档.md
+diary-android/接口文档.md

@@ -31,6 +31,16 @@ export function getDB(): Promise<IDBPDatabase> {
   return dbPromise;
 }
 
+export async function clearAllData(): Promise<void> {
+  const db = await getDB();
+  const storeNames = db.objectStoreNames;
+  const tx = db.transaction([...storeNames], 'readwrite');
+  for (const name of storeNames) {
+    await tx.objectStore(name).clear();
+  }
+  await tx.done;
+}
+
 export function closeDB() {
   if (dbPromise) {
     dbPromise.then((db) => db.close()).catch(() => {});

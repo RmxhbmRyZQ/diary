@@ -7,12 +7,14 @@ CREATE TABLE IF NOT EXISTS users (
     auth_key_hash VARCHAR(255) NOT NULL,
     salt_auth VARCHAR(64) NOT NULL,
     encrypted_dek TEXT NOT NULL,
-    encrypted_dek_recovery TEXT NOT NULL,
+    encrypted_dek_recovery TEXT NULL,
     salt_enc VARCHAR(64) NOT NULL,
     kdf_version INT NOT NULL,
     kdf_params JSON NOT NULL,
     recovery_data TEXT NULL,
     recovery_salt VARCHAR(64) NULL,
+    recovery_challenge TEXT NULL,
+    recovery_challenge_encrypted TEXT NULL,
     created_at DATETIME(3) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

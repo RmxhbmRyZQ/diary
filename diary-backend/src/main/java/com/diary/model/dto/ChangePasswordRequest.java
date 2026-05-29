@@ -16,9 +16,6 @@ public class ChangePasswordRequest {
     private String newEncryptedDek;
 
     @NotBlank
-    private String newEncryptedDekRecovery;
-
-    @NotBlank
     private String newSaltEnc;
 
     @NotNull
@@ -32,9 +29,6 @@ public class ChangePasswordRequest {
 
     public String getNewEncryptedDek() { return newEncryptedDek; }
     public void setNewEncryptedDek(String newEncryptedDek) { this.newEncryptedDek = newEncryptedDek; }
-
-    public String getNewEncryptedDekRecovery() { return newEncryptedDekRecovery; }
-    public void setNewEncryptedDekRecovery(String newEncryptedDekRecovery) { this.newEncryptedDekRecovery = newEncryptedDekRecovery; }
 
     public String getNewSaltEnc() { return newSaltEnc; }
     public void setNewSaltEnc(String newSaltEnc) { this.newSaltEnc = newSaltEnc; }

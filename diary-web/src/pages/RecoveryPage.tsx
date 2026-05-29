@@ -3,11 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import PasswordStrength from '../components/ui/PasswordStrength';
 import {
   deriveKey,
-  generateDEK,
   encryptDEK,
-  decryptDEK,
   deriveAuthKeyBytes,
-  hashAuthKey,
   generateRandomBytes,
 } from '../crypto/cryptoService';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../crypto/utils';
@@ -30,12 +27,12 @@ export default function RecoveryPage() {
 
   const [step, setStep] = useState<Step>('username');
   const [username, setUsername] = useState('');
-  const [recoveryToken, setRecoveryToken] = useState('');
   const [recoveryData, setRecoveryData] = useState('');
   const [recoverySalt, setRecoverySalt] = useState('');
-  const [encryptedDekRecovery, setEncryptedDekRecovery] = useState('');
-  const [saltEnc, setSaltEnc] = useState('');
   const [recoveryPhrase, setRecoveryPhrase] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [challengeIv, setChallengeIv] = useState('');
+  const [encryptedChallenge, setEncryptedChallenge] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,16 +48,15 @@ export default function RecoveryPage() {
       const data = result.data;
 
       if (!data.recovery_data || !data.recovery_salt) {
-        setError('该用户未设置恢复口令托管，请使用离线保存的恢复密钥');
+        setError('该用户未设置恢复口令托管');
         setLoading(false);
         return;
       }
 
-      setRecoveryToken(data.recovery_token);
       setRecoveryData(data.recovery_data);
       setRecoverySalt(data.recovery_salt);
-      setEncryptedDekRecovery(data.encrypted_dek_recovery);
-      setSaltEnc(data.salt_enc);
+      setChallenge(data.challenge || '');
+      setChallengeIv(data.challenge_iv || '');
       setStep('recovery-phrase');
     } catch (err: unknown) {
       const e = err as { code?: number };
@@ -86,25 +82,30 @@ export default function RecoveryPage() {
       const { ciphertext: recCipher, iv: recIv } = parseEncryptedWithIv(recoveryData);
       if (!recIv) throw new Error('缺少 IV');
 
-      const decryptedRecoveryKey = await crypto.subtle.decrypt(
+      const decryptedDekRaw = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: new Uint8Array(base64ToArrayBuffer(recIv)) },
         recoveryKek,
         base64ToArrayBuffer(recCipher),
       );
 
-      const recoveryKeyBytes = new Uint8Array(decryptedRecoveryKey);
-      const recoveryCryptoKey = await crypto.subtle.importKey(
+      const recoveredDek = await crypto.subtle.importKey(
         'raw',
-        recoveryKeyBytes,
+        new Uint8Array(decryptedDekRaw),
         { name: 'AES-GCM', length: 256 },
-        false,
+        true,
         ['encrypt', 'decrypt'],
       );
 
-      const { ciphertext: dekCipher, iv: dekIv } = parseEncryptedWithIv(encryptedDekRecovery);
-      if (!dekIv) throw new Error('缺少 DEK IV');
+      if (challenge && challengeIv) {
+        const challengeBytes = new Uint8Array(base64ToArrayBuffer(challenge));
+        const encChallenge = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv: new Uint8Array(base64ToArrayBuffer(challengeIv)) },
+          recoveryKek,
+          challengeBytes,
+        );
+        setEncryptedChallenge(`${arrayBufferToBase64(new Uint8Array(encChallenge).buffer)}:${challengeIv}`);
+      }
 
-      const recoveredDek = await decryptDEK(dekCipher, recoveryCryptoKey, dekIv);
       setDek(recoveredDek);
       setStep('new-password');
     } catch {
@@ -150,25 +151,13 @@ export default function RecoveryPage() {
       const { encryptedPayload: newEncryptedDek, iv: newDekIv } = await encryptDEK(dek, newKek);
       const newEncryptedDekWithIv = `${newEncryptedDek}:${newDekIv}`;
 
-      const recoveryKeyBytes = generateRandomBytes(32);
-      const recoveryCryptoKey = await crypto.subtle.importKey(
-        'raw',
-        recoveryKeyBytes,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt'],
-      );
-      const { encryptedPayload: newEncryptedDekRecovery, iv: recDekIv } = await encryptDEK(dek, recoveryCryptoKey);
-      const newEncryptedDekRecoveryWithIv = `${newEncryptedDekRecovery}:${recDekIv}`;
-
       await resetPassword(
         username.trim(),
-        recoveryToken,
         newAuthKey,
         newEncryptedDekWithIv,
-        newEncryptedDekRecoveryWithIv,
         saltB64,
         KDF_PARAMS,
+        encryptedChallenge,
       );
 
       navigate('/login', { replace: true, state: { recovered: true } });

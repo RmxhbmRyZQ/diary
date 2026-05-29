@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAllEntries, type CachedEntry } from '../db/entries';
 import { getMoodLabel } from '../utils/constants';
+import { toBeijingISOString } from '../utils/timeUtils';
 import { ArrowLeft } from 'lucide-react';
 
 interface HeatmapDay {
@@ -32,7 +33,7 @@ export default function StatisticsPage() {
     // Consecutive days
     let maxStreak = 0;
     let currentStreak = 0;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toBeijingISOString().slice(0, 10);
     const sortedDates = Array.from(daySet).sort();
     for (let i = 0; i < sortedDates.length; i++) {
       if (i === 0) {
@@ -96,7 +97,7 @@ export default function StatisticsPage() {
     for (let i = 365; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = toBeijingISOString(d).slice(0, 10);
       heatmap.push({ date: dateStr, count: countByDate.get(dateStr) || 0 });
     }
 

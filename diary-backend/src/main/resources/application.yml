@@ -15,6 +15,8 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        jdbc:
+          time_zone: UTC
   servlet:
     multipart:
       max-file-size: 10MB
@@ -23,6 +25,7 @@ spring:
     serialization:
       write-dates-as-timestamps: false
     date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+    time-zone: Asia/Shanghai
 
 app:
   security:

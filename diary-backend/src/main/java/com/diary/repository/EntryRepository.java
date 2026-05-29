@@ -33,6 +33,9 @@ public interface EntryRepository extends JpaRepository<Entry, String> {
     @Query("SELECT e.id, e.diaryDate, e.updatedAt FROM Entry e WHERE e.userId = :userId")
     List<Object[]> findSyncSummariesByUserId(@Param("userId") String userId);
 
+    @Query("SELECT e.id, e.diaryDate, e.updatedAt FROM Entry e WHERE e.userId = :userId AND e.updatedAt > :since")
+    List<Object[]> findSyncSummariesByUserIdAndUpdatedAtAfter(@Param("userId") String userId, @Param("since") Instant since);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Entry e SET e.mood = :mood, e.weather = :weather, e.favorite = :favorite, " +
            "e.diaryDate = :diaryDate, e.version = e.version + 1, e.updatedAt = :now " +

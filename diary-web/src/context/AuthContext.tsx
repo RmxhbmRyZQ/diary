@@ -5,12 +5,12 @@ import {
   generateDEK,
   encryptDEK,
   decryptDEK,
-  hashAuthKey,
   generateRandomBytes,
   type KdfParams,
 } from '../crypto/cryptoService';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../crypto/utils';
 import * as authApi from '../api/auth';
+import { clearAllData } from '../db';
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -123,7 +123,7 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<{ recoveryKey: string }>;
+  register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   checkSession: () => Promise<void>;
@@ -134,19 +134,6 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const KDF_ALGORITHM = 'pbkdf2-sha256';
-
-function generateRecoveryKey(): { keyBytes: Uint8Array; mnemonic: string } {
-  const bytes = generateRandomBytes(32);
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  const words: string[] = [];
-  for (let i = 0; i < 12; i++) {
-    const chunk = hex.substring(i * 5, i * 5 + 5);
-    words.push(chunk);
-  }
-  return { keyBytes: bytes, mnemonic: words.join(' ') };
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -313,29 +300,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authKeyBytes = await deriveAuthKeyBytes(password, salt, iterations);
     const authKey = arrayBufferToBase64(authKeyBytes);
 
-    const { keyBytes: recoveryKeyBytes, mnemonic: recoveryKeyMnemonic } = generateRecoveryKey();
-    const recoveryCryptoKey = await crypto.subtle.importKey(
-      'raw',
-      recoveryKeyBytes,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
-    );
-    const { encryptedPayload: encryptedDekRecovery, iv: recoveryDekIv } = await encryptDEK(dek, recoveryCryptoKey);
-    const encryptedDekRecoveryWithIv = `${encryptedDekRecovery}:${recoveryDekIv}`;
-
     await authApi.register({
       username,
       authKey,
       saltAuth: saltB64,
       encryptedDek: encryptedDekWithIv,
-      encryptedDekRecovery: encryptedDekRecoveryWithIv,
       saltEnc: saltB64,
       kdfVersion: 1,
       kdfParams: { algorithm: KDF_ALGORITHM, iterations },
     });
 
-    return { recoveryKey: recoveryKeyMnemonic };
+    // Auto-login after registration so recovery setup can work
+    const loginResult = await authApi.login(username, authKey);
+    const loginData = loginResult.data as authApi.LoginResponse;
+
+    const user: User = { userId: loginData.userId, username };
+    try {
+      await persistSession(dek, user);
+    } catch {
+      // non-critical
+    }
+    sessionStorage.setItem('unlockUsername', username);
+    setState({
+      user,
+      isAuthenticated: true,
+      isLoading: false,
+      needsUnlock: false,
+      dek,
+      needsKdfUpgrade: false,
+    });
   }, []);
 
   const logout = useCallback(async () => {
@@ -352,6 +345,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       needsUnlock: false,
       dek: null,
     });
+    try {
+      await clearAllData();
+    } catch {
+      // 清除缓存失败不阻塞注销
+    }
   }, []);
 
   const dismissKdfUpgrade = useCallback(() => {
@@ -389,22 +387,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { encryptedPayload: newEncryptedDek, iv: newDekIv } = await encryptDEK(state.dek, newKek);
     const newEncryptedDekWithIv = `${newEncryptedDek}:${newDekIv}`;
 
-    const recoveryKeyBytes = generateRandomBytes(32);
-    const recoveryCryptoKey = await crypto.subtle.importKey(
-      'raw',
-      recoveryKeyBytes,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey'],
-    );
-    const { encryptedPayload: newEncryptedDekRecovery, iv: newRecDekIv } = await encryptDEK(state.dek, recoveryCryptoKey);
-    const newEncryptedDekRecoveryWithIv = `${newEncryptedDekRecovery}:${newRecDekIv}`;
-
     await authApi.changePassword(
       oldAuthKey,
       newAuthKey,
       newEncryptedDekWithIv,
-      newEncryptedDekRecoveryWithIv,
       arrayBufferToBase64(saltEnc),
       { algorithm: KDF_ALGORITHM, iterations },
     );

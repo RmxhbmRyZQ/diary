@@ -5,7 +5,6 @@ export interface RegisterParams {
   authKey: string;
   saltAuth: string;
   encryptedDek: string;
-  encryptedDekRecovery: string;
   saltEnc: string;
   kdfVersion: number;
   kdfParams: {
@@ -17,7 +16,6 @@ export interface RegisterParams {
 export interface LoginResponse {
   userId: string;
   encryptedDek: string;
-  encryptedDekRecovery: string;
   saltEnc: string;
   kdfVersion: number;
   kdfParams: {
@@ -31,8 +29,8 @@ export interface RecoveryResponse {
   recovery_data: string;
   recovery_salt: string;
   salt_enc: string;
-  encrypted_dek_recovery: string;
-  recovery_token: string;
+  challenge: string;
+  challenge_iv: string;
 }
 
 export function register(params: RegisterParams) {
@@ -51,7 +49,6 @@ export function changePassword(
   oldAuthKey: string,
   newAuthKeyHash: string,
   newEncryptedDek: string,
-  newEncryptedDekRecovery: string,
   newSaltEnc: string,
   newKdfParams: { algorithm: string; iterations: number },
 ) {
@@ -59,7 +56,6 @@ export function changePassword(
     oldAuthKey,
     newAuthKeyHash,
     newEncryptedDek,
-    newEncryptedDekRecovery,
     newSaltEnc,
     newKdfParams,
   });
@@ -69,8 +65,8 @@ export function getKdfInfo() {
   return apiClient.get('/auth/kdf-info');
 }
 
-export function setRecovery(recoveryData: string, recoverySalt: string) {
-  return apiClient.put('/auth/recovery', { recoveryData, recoverySalt });
+export function setRecovery(recoveryData: string, recoverySalt: string, challenge: string, encryptedChallenge: string) {
+  return apiClient.put('/auth/recovery', { recoveryData, recoverySalt, challenge, encryptedChallenge });
 }
 
 export function getRecovery(username: string) {
@@ -79,30 +75,28 @@ export function getRecovery(username: string) {
 
 export function resetPassword(
   username: string,
-  recoveryToken: string,
   newAuthKeyHash: string,
   newEncryptedDek: string,
-  newEncryptedDekRecovery: string,
   newSaltEnc: string,
   newKdfParams: { algorithm: string; iterations: number },
+  encryptedChallenge: string,
 ) {
   return apiClient.post('/auth/recovery/reset', {
     username,
-    recoveryToken,
     newAuthKeyHash,
     newEncryptedDek,
-    newEncryptedDekRecovery,
     newSaltEnc,
     newKdfParams,
+    encryptedChallenge,
   });
 }
 
 export function deleteRecovery(authKey: string) {
-  return apiClient.delete('/auth/recovery', { data: { authKey } });
+  return apiClient.delete('/auth/recovery', { data: { authKey }, skipAuthExpiredEvent: true } as never);
 }
 
 export function deleteAccount(authKey: string) {
-  return apiClient.delete('/auth/account', { data: { authKey } });
+  return apiClient.delete('/auth/account', { data: { authKey }, skipAuthExpiredEvent: true } as never);
 }
 
 export interface ServerConfig {

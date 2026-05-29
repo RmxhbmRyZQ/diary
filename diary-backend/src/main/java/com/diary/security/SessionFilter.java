@@ -77,7 +77,8 @@ public class SessionFilter implements Filter {
                 || path.startsWith("/api/v1/auth/register")
                 || path.startsWith("/api/v1/config")
                 || (path.startsWith("/api/v1/auth/recovery")
-                    && "GET".equalsIgnoreCase(method));
+                    && ("GET".equalsIgnoreCase(method)
+                        || "POST".equalsIgnoreCase(method)));
     }
 
     private String extractSessionId(HttpServletRequest req) {

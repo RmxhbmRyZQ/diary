@@ -1,23 +1,29 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { setRecovery } from '../api/auth';
+import { deriveKey, generateRandomBytes } from '../crypto/cryptoService';
+import { arrayBufferToBase64 } from '../crypto/utils';
 import PasswordStrength from '../components/ui/PasswordStrength';
 
-type Step = 'form' | 'recovery-key' | 'recovery-setup' | 'complete';
+type Step = 'form' | 'recovery-choice' | 'recovery-setup' | 'complete';
 
 export default function RegisterPage() {
-  const { register } = useAuth();
+  const { register, dek, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<Step>('form');
+
+  useEffect(() => {
+    if (isAuthenticated && step === 'form') {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, step, navigate]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [recoveryKey, setRecoveryKey] = useState('');
-  const [confirmed, setConfirmed] = useState(false);
-  const [enableRecovery, setEnableRecovery] = useState(false);
   const [recoveryPassword, setRecoveryPassword] = useState('');
 
   function validatePassword(pw: string): string | null {
@@ -53,9 +59,8 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const result = await register(username.trim(), password);
-      setRecoveryKey(result.recoveryKey);
-      setStep('recovery-key');
+      await register(username.trim(), password);
+      setStep('recovery-choice');
     } catch (err: unknown) {
       const errorObj = err as Error;
       if ((err as { code?: number }).code === 409) {
@@ -65,15 +70,6 @@ export default function RegisterPage() {
       }
     } finally {
       setLoading(false);
-    }
-  }
-
-  function handleRecoveryConfirm() {
-    if (!confirmed) return;
-    if (enableRecovery) {
-      setStep('recovery-setup');
-    } else {
-      setStep('complete');
     }
   }
 
@@ -89,64 +85,67 @@ export default function RegisterPage() {
     );
   }
 
-  if (step === 'recovery-key') {
+  if (step === 'recovery-choice') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-warm-50 px-4">
         <div className="w-full max-w-sm card space-y-4">
-          <h2 className="text-xl font-bold text-gray-800 text-center">保存你的恢复密钥</h2>
+          <h2 className="text-xl font-bold text-gray-800 text-center">设置恢复口令</h2>
           <p className="text-sm text-gray-500 text-center">
-            如果你忘记了密码，恢复密钥是找回数据的<strong>唯一途径</strong>。请务必安全保存。
+            恢复口令用于忘记密码时找回数据。建议设置一个与登录密码不同的口令。
           </p>
 
-          <div className="bg-warm-100 rounded-xl p-4">
-            <p className="text-sm font-mono text-gray-700 break-all select-all leading-relaxed">
-              {recoveryKey}
-            </p>
-          </div>
-
           <button
-            onClick={() => {
-              navigator.clipboard.writeText(recoveryKey).catch(() => {});
-            }}
-            className="btn-ghost w-full text-sm"
-          >
-            复制到剪贴板
-          </button>
-
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm text-gray-600">
-              我已将恢复密钥安全保存在离线位置（如抄写在纸上或保存到加密文件中），我知道丢失恢复密钥和密码将导致数据永久无法恢复。
-            </span>
-          </label>
-
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={enableRecovery}
-              onChange={(e) => setEnableRecovery(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm text-gray-600">
-              设置恢复口令托管（可选，可在设置中随时开启或关闭）
-            </span>
-          </label>
-
-          <button
-            onClick={handleRecoveryConfirm}
-            disabled={!confirmed}
+            onClick={() => setStep('recovery-setup')}
             className="btn-primary w-full"
           >
-            继续
+            设置恢复口令
+          </button>
+
+          <button
+            onClick={() => setStep('complete')}
+            className="btn-ghost w-full text-sm"
+          >
+            暂不设置（可在设置中随时开启）
           </button>
         </div>
       </div>
     );
+  }
+
+  async function handleRecoverySetup() {
+    if (!dek || !recoveryPassword) return;
+    setError('');
+    setLoading(true);
+    try {
+      const recoverySalt = generateRandomBytes(16);
+      const kek = await deriveKey(recoveryPassword, recoverySalt, 600000, 'encrypt');
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const exportedDek = await crypto.subtle.exportKey('raw', dek);
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        kek,
+        exportedDek,
+      );
+      const recoveryData = `${arrayBufferToBase64(new Uint8Array(encrypted).buffer)}:${arrayBufferToBase64(iv.buffer)}`;
+      const recoverySaltB64 = arrayBufferToBase64(recoverySalt.buffer);
+
+      const challengeBytes = generateRandomBytes(32);
+      const challengeIv = crypto.getRandomValues(new Uint8Array(12));
+      const encryptedChallenge = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: challengeIv },
+        kek,
+        challengeBytes,
+      );
+      const challengeB64 = arrayBufferToBase64(challengeBytes.buffer);
+      const encryptedChallengeB64 = `${arrayBufferToBase64(new Uint8Array(encryptedChallenge).buffer)}:${arrayBufferToBase64(challengeIv.buffer)}`;
+
+      await setRecovery(recoveryData, recoverySaltB64, challengeB64, encryptedChallengeB64);
+      setStep('complete');
+    } catch (err: unknown) {
+      setError((err as Error).message || '设置恢复口令失败');
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (step === 'recovery-setup') {
@@ -169,23 +168,27 @@ export default function RegisterPage() {
               value={recoveryPassword}
               onChange={(e) => setRecoveryPassword(e.target.value)}
               placeholder="请输入恢复口令（不同于登录密码）"
+              disabled={loading}
             />
             <PasswordStrength password={recoveryPassword} />
           </div>
+
+          {error && <p className="text-red-500 text-sm text-center" role="alert">{error}</p>}
 
           <div className="flex gap-3">
             <button
               onClick={() => setStep('complete')}
               className="btn-ghost flex-1 text-sm"
+              disabled={loading}
             >
               跳过
             </button>
             <button
-              onClick={() => setStep('complete')}
-              disabled={!recoveryPassword || recoveryPassword.length < 8}
+              onClick={handleRecoverySetup}
+              disabled={loading || !recoveryPassword || recoveryPassword.length < 8}
               className="btn-primary flex-1"
             >
-              保存并继续
+              {loading ? '设置中...' : '保存并继续'}
             </button>
           </div>
         </div>

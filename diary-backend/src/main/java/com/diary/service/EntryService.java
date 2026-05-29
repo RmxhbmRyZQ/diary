@@ -37,8 +37,10 @@ public class EntryService {
         this.attachmentService = attachmentService;
     }
 
-    public List<EntrySyncItem> getSyncSummaries(String userId) {
-        List<Object[]> rows = entryRepository.findSyncSummariesByUserId(userId);
+    public List<EntrySyncItem> getSyncSummaries(String userId, Instant since) {
+        List<Object[]> rows = since != null
+                ? entryRepository.findSyncSummariesByUserIdAndUpdatedAtAfter(userId, since)
+                : entryRepository.findSyncSummariesByUserId(userId);
         List<EntrySyncItem> items = new ArrayList<>();
         for (Object[] row : rows) {
             Object dateObj = row[1];

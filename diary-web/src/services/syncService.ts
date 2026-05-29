@@ -1,5 +1,7 @@
+import axios from 'axios';
 import { syncEntries, batchGetEntries, type SyncEntry } from '../api/entries';
 import { decryptPayload } from '../crypto/cryptoService';
+import { toBeijingISOString } from '../utils/timeUtils';
 import {
   getAllEntries,
   putEntry,
@@ -8,14 +10,46 @@ import {
   type CachedEntry,
 } from '../db/entries';
 
+const LAST_SYNC_KEY = 'lastSyncTime';
+
 export interface SyncResult {
   added: number;
   updated: number;
   removed: number;
 }
 
-export async function fullSync(dek: CryptoKey): Promise<SyncResult> {
-  const response = await syncEntries();
+export class SyncError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SyncError';
+  }
+}
+
+function getLastSyncTime(): string | undefined {
+  const v = localStorage.getItem(LAST_SYNC_KEY);
+  return v || undefined;
+}
+
+function saveLastSyncTime() {
+  localStorage.setItem(LAST_SYNC_KEY, toBeijingISOString());
+}
+
+export async function fullSync(dek: CryptoKey, since?: string): Promise<SyncResult> {
+  const effectiveSince = since ?? getLastSyncTime();
+
+  let response;
+  try {
+    response = await syncEntries(effectiveSince);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data) {
+      const msg = (error.response.data as { message?: string }).message;
+      if (msg) {
+        throw new SyncError(msg);
+      }
+    }
+    throw new SyncError('同步失败，请检查网络连接');
+  }
+
   const serverEntries: SyncEntry[] = response.data.entries;
 
   const localEntries = await getAllEntries();
@@ -38,8 +72,12 @@ export async function fullSync(dek: CryptoKey): Promise<SyncResult> {
     }
   }
 
-  const removed = localEntries.filter((e) => !serverIds.has(e.diaryId)).length;
-  await deleteEntriesNotIn(serverIds);
+  let removed = 0;
+  if (!effectiveSince) {
+    // Full sync: detect deletions by removing local entries not on server
+    removed = localEntries.filter((e) => !serverIds.has(e.diaryId)).length;
+    await deleteEntriesNotIn(serverIds);
+  }
 
   if (needFetch.length > 0) {
     const batchSize = 50;
@@ -69,6 +107,7 @@ export async function fullSync(dek: CryptoKey): Promise<SyncResult> {
     }
   }
 
+  saveLastSyncTime();
   return { added, updated, removed };
 }
 

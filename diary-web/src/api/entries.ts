@@ -1,4 +1,5 @@
 import apiClient from './client';
+import { toBeijingISOString } from '../utils/timeUtils';
 
 export interface SyncEntry {
   id: string;
@@ -48,8 +49,13 @@ export interface UpdateEntryMetaParams {
   version: number;
 }
 
-export function syncEntries() {
-  return apiClient.get<{ code: number; data: { entries: SyncEntry[] } }>('/entries/sync');
+export function syncEntries(since?: string) {
+  const params: Record<string, string> = {};
+  if (since) {
+    params.since = since;
+  }
+  params.clientTime = toBeijingISOString();
+  return apiClient.get<{ code: number; data: { entries: SyncEntry[] } }>('/entries/sync', { params });
 }
 
 export function batchGetEntries(ids: string[]) {

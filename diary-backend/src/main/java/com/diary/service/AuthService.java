@@ -19,24 +19,19 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import org.springframework.scheduling.annotation.Scheduled;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private static final int RECOVERY_TOKEN_TTL_MINUTES = 5;
 
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
@@ -46,21 +41,6 @@ public class AuthService {
     private final RateLimiterService rateLimiter;
     private final AttachmentRepository attachmentRepository;
     private final EntryRepository entryRepository;
-    private final Map<String, RecoveryTokenEntry> recoveryTokens = new ConcurrentHashMap<>();
-
-    private static class RecoveryTokenEntry {
-        final String username;
-        final Instant createdAt;
-
-        RecoveryTokenEntry(String username) {
-            this.username = username;
-            this.createdAt = Instant.now();
-        }
-
-        boolean isExpired() {
-            return createdAt.plus(RECOVERY_TOKEN_TTL_MINUTES, ChronoUnit.MINUTES).isBefore(Instant.now());
-        }
-    }
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,
                        AppConfig appConfig, ObjectMapper objectMapper,
@@ -106,7 +86,6 @@ public class AuthService {
                 passwordEncoder.encode(req.getAuthKey()),
                 req.getSaltAuth(),
                 req.getEncryptedDek(),
-                req.getEncryptedDekRecovery(),
                 req.getSaltEnc(),
                 req.getKdfVersion(),
                 kdfParamsJson
@@ -161,7 +140,6 @@ public class AuthService {
         return new LoginResponse(
                 user.getId(),
                 user.getEncryptedDek(),
-                user.getEncryptedDekRecovery(),
                 user.getSaltEnc(),
                 user.getKdfVersion(),
                 kdfParams,
@@ -201,7 +179,6 @@ public class AuthService {
 
         user.setAuthKeyHash(passwordEncoder.encode(req.getNewAuthKeyHash()));
         user.setEncryptedDek(req.getNewEncryptedDek());
-        user.setEncryptedDekRecovery(req.getNewEncryptedDekRecovery());
         user.setSaltEnc(req.getNewSaltEnc());
         user.setKdfParams(kdfParamsJson);
         userRepository.save(user);
@@ -252,6 +229,8 @@ public class AuthService {
 
         user.setRecoveryData(req.getRecoveryData());
         user.setRecoverySalt(req.getRecoverySalt());
+        user.setRecoveryChallenge(req.getChallenge());
+        user.setRecoveryChallengeEncrypted(req.getEncryptedChallenge());
         userRepository.save(user);
 
         log.info("Recovery data set for userId={}", userId);
@@ -268,6 +247,8 @@ public class AuthService {
 
         user.setRecoveryData(null);
         user.setRecoverySalt(null);
+        user.setRecoveryChallenge(null);
+        user.setRecoveryChallengeEncrypted(null);
         userRepository.save(user);
 
         log.info("Recovery data deleted for userId={}", userId);
@@ -275,16 +256,18 @@ public class AuthService {
 
     @Transactional
     public void recoveryReset(RecoveryResetRequest req) {
-        RecoveryTokenEntry entry = recoveryTokens.remove(req.getRecoveryToken());
-        if (entry == null || entry.isExpired()) {
-            throw new BusinessException(401, "恢复令牌无效或已过期，请重新获取托管信息");
-        }
-        if (!entry.username.equals(req.getUsername())) {
-            throw new BusinessException(401, "恢复令牌与用户名不匹配");
-        }
-
         User user = userRepository.findByUsername(req.getUsername())
                 .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+
+        if (user.getRecoveryChallengeEncrypted() != null
+                && !user.getRecoveryChallengeEncrypted().isEmpty()) {
+            if (req.getEncryptedChallenge() == null || req.getEncryptedChallenge().isBlank()) {
+                throw new BusinessException(400, "缺少恢复口令验证凭证");
+            }
+            if (!req.getEncryptedChallenge().equals(user.getRecoveryChallengeEncrypted())) {
+                throw new BusinessException(401, "恢复口令验证失败");
+            }
+        }
 
         String kdfParamsJson;
         try {
@@ -295,7 +278,6 @@ public class AuthService {
 
         user.setAuthKeyHash(passwordEncoder.encode(req.getNewAuthKeyHash()));
         user.setEncryptedDek(req.getNewEncryptedDek());
-        user.setEncryptedDekRecovery(req.getNewEncryptedDekRecovery());
         user.setSaltEnc(req.getNewSaltEnc());
         user.setKdfParams(kdfParamsJson);
         userRepository.save(user);
@@ -303,11 +285,6 @@ public class AuthService {
         sessionRepository.deleteAllByUserId(user.getId());
 
         log.info("Recovery reset completed for userId={}, all sessions destroyed", user.getId());
-    }
-
-    @Scheduled(fixedRate = 120000)
-    public void evictExpiredRecoveryTokens() {
-        recoveryTokens.entrySet().removeIf(e -> e.getValue().isExpired());
     }
 
     public Object getRecoveryInfo(String username) {
@@ -318,15 +295,20 @@ public class AuthService {
 
         User user = userOpt.get();
 
-        String token = UUID.randomUUID().toString();
-        recoveryTokens.put(token, new RecoveryTokenEntry(username));
+        String challengeIv = "";
+        if (user.getRecoveryChallengeEncrypted() != null) {
+            String[] parts = user.getRecoveryChallengeEncrypted().split(":");
+            if (parts.length > 1) {
+                challengeIv = parts[1];
+            }
+        }
 
         return Map.of(
                 "recovery_data", user.getRecoveryData() != null ? user.getRecoveryData() : "",
                 "recovery_salt", user.getRecoverySalt() != null ? user.getRecoverySalt() : "",
                 "salt_enc", user.getSaltEnc(),
-                "encrypted_dek_recovery", user.getEncryptedDekRecovery(),
-                "recovery_token", token
+                "challenge", user.getRecoveryChallenge() != null ? user.getRecoveryChallenge() : "",
+                "challenge_iv", challengeIv
         );
     }
 

@@ -23,7 +23,7 @@ public class User {
     @Column(name = "encrypted_dek", columnDefinition = "TEXT", nullable = false)
     private String encryptedDek;
 
-    @Column(name = "encrypted_dek_recovery", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "encrypted_dek_recovery", columnDefinition = "TEXT")
     private String encryptedDekRecovery;
 
     @Column(name = "salt_enc", length = 64, nullable = false)
@@ -41,20 +41,25 @@ public class User {
     @Column(name = "recovery_salt", length = 64)
     private String recoverySalt;
 
+    @Column(name = "recovery_challenge", columnDefinition = "TEXT")
+    private String recoveryChallenge;
+
+    @Column(name = "recovery_challenge_encrypted", columnDefinition = "TEXT")
+    private String recoveryChallengeEncrypted;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     public User() {}
 
     public User(String id, String username, String authKeyHash, String saltAuth,
-                String encryptedDek, String encryptedDekRecovery, String saltEnc,
+                String encryptedDek, String saltEnc,
                 int kdfVersion, String kdfParams) {
         this.id = id;
         this.username = username;
         this.authKeyHash = authKeyHash;
         this.saltAuth = saltAuth;
         this.encryptedDek = encryptedDek;
-        this.encryptedDekRecovery = encryptedDekRecovery;
         this.saltEnc = saltEnc;
         this.kdfVersion = kdfVersion;
         this.kdfParams = kdfParams;
@@ -93,6 +98,12 @@ public class User {
 
     public String getRecoverySalt() { return recoverySalt; }
     public void setRecoverySalt(String recoverySalt) { this.recoverySalt = recoverySalt; }
+
+    public String getRecoveryChallenge() { return recoveryChallenge; }
+    public void setRecoveryChallenge(String recoveryChallenge) { this.recoveryChallenge = recoveryChallenge; }
+
+    public String getRecoveryChallengeEncrypted() { return recoveryChallengeEncrypted; }
+    public void setRecoveryChallengeEncrypted(String recoveryChallengeEncrypted) { this.recoveryChallengeEncrypted = recoveryChallengeEncrypted; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

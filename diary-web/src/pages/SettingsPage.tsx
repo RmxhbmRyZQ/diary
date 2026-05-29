@@ -8,6 +8,7 @@ import { syncEntries, batchGetEntries } from '../api/entries';
 import { downloadAttachment } from '../api/attachments';
 import { deriveKey, generateRandomBytes, deriveAuthKeyBytes } from '../crypto/cryptoService';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../crypto/utils';
+import { toBeijingISOString } from '../utils/timeUtils';
 import PasswordStrength from '../components/ui/PasswordStrength';
 import { ArrowLeft, Download, Shield, Trash2, Key } from 'lucide-react';
 
@@ -82,8 +83,8 @@ export default function SettingsPage() {
       const result = await getRecovery(user.username);
       const hasRecovery = !!(result.data?.recovery_data);
       setRecoverySet(hasRecovery);
-    } catch {
-      setError('查询恢复状态失败');
+    } catch (err: unknown) {
+      setError((err as Error).message || '查询恢复状态失败');
     }
   };
 
@@ -96,27 +97,32 @@ export default function SettingsPage() {
 
     try {
       const recoverySalt = generateRandomBytes(16);
-      const kek = await deriveKey(recoveryPhrase, recoverySalt, 600000, 'recovery');
-      const recoveryKey = await crypto.subtle.generateKey(
-        { name: 'AES-GCM', length: 256 },
-        true,
-        ['encrypt', 'decrypt'],
-      );
-      const exportedKey = await crypto.subtle.exportKey('raw', recoveryKey);
+      const kek = await deriveKey(recoveryPhrase, recoverySalt, 600000, 'encrypt');
       const iv = crypto.getRandomValues(new Uint8Array(12));
+      const exportedDek = await crypto.subtle.exportKey('raw', dek);
       const encrypted = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
         kek,
-        exportedKey,
+        exportedDek,
       );
       const recoveryData = `${arrayBufferToBase64(new Uint8Array(encrypted).buffer)}:${arrayBufferToBase64(iv.buffer)}`;
       const recoverySaltB64 = arrayBufferToBase64(recoverySalt.buffer);
 
-      await setRecovery(recoveryData, recoverySaltB64);
+      const challengeBytes = generateRandomBytes(32);
+      const challengeIv = crypto.getRandomValues(new Uint8Array(12));
+      const encryptedChallenge = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: challengeIv },
+        kek,
+        challengeBytes,
+      );
+      const challengeB64 = arrayBufferToBase64(challengeBytes.buffer);
+      const encryptedChallengeB64 = `${arrayBufferToBase64(new Uint8Array(encryptedChallenge).buffer)}:${arrayBufferToBase64(challengeIv.buffer)}`;
+
+      await setRecovery(recoveryData, recoverySaltB64, challengeB64, encryptedChallengeB64);
       setRecoverySet(true);
       setMessage('恢复口令托管已设置');
-    } catch {
-      setError('设置恢复口令失败');
+    } catch (err: unknown) {
+      setError((err as Error).message || '设置恢复口令失败');
     } finally {
       setLoading(false);
     }
@@ -137,8 +143,8 @@ export default function SettingsPage() {
       }
       setRecoverySet(false);
       setMessage('托管信息已删除');
-    } catch {
-      setError('删除失败，请确认密码正确');
+    } catch (err: unknown) {
+      setError((err as Error).message || '删除失败，请确认密码正确');
     } finally {
       setLoading(false);
     }
@@ -191,12 +197,12 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `diary-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `diary-export-${toBeijingISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setMessage('明文导出完成（含图片）');
-    } catch {
-      setError('导出失败');
+    } catch (err: unknown) {
+      setError((err as Error).message || '导出失败');
     } finally {
       setLoading(false);
     }
@@ -250,7 +256,7 @@ export default function SettingsPage() {
       }
 
       const exportData = {
-        exportedAt: new Date().toISOString(),
+        exportedAt: toBeijingISOString(),
         entryCount: allDetails.length,
         attachmentCount: allAttachments.length,
         entries: allDetails,
@@ -261,12 +267,12 @@ export default function SettingsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `diary-encrypted-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `diary-encrypted-export-${toBeijingISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setMessage('密文导出完成（含附件，包含所有加密数据，可用于冷存储恢复）');
-    } catch {
-      setError('导出失败');
+    } catch (err: unknown) {
+      setError((err as Error).message || '导出失败');
     } finally {
       setLoading(false);
     }
@@ -292,8 +298,8 @@ export default function SettingsPage() {
       await deleteAccount(arrayBufferToBase64(authKeyBytes));
       await logout();
       navigate('/login', { replace: true });
-    } catch {
-      setError('注销失败，请确认密码正确');
+    } catch (err: unknown) {
+      setError((err as Error).message || '注销失败，请确认密码正确');
     } finally {
       setLoading(false);
     }

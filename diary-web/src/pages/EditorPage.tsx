@@ -8,6 +8,7 @@ import { uploadAttachment, deleteAttachment } from '../api/attachments';
 import { encryptPayload } from '../crypto/cryptoService';
 import { arrayBufferToBase64 } from '../crypto/utils';
 import { compressImage } from '../utils/imageCompress';
+import { toBeijingISOString } from '../utils/timeUtils';
 import { renderMarkdownToHtml } from '../utils/markdown';
 import MarkdownEditor from '../components/diary/MarkdownEditor';
 import AttachmentImage from '../components/diary/AttachmentImage';
@@ -29,7 +30,7 @@ export default function EditorPage() {
   const [mood, setMood] = useState<string | null>(null);
   const [weather, setWeather] = useState<string | null>(null);
   const [favorite, setFavorite] = useState(false);
-  const [diaryDate, setDiaryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [diaryDate, setDiaryDate] = useState(toBeijingISOString().slice(0, 10));
   const [version, setVersion] = useState(0);
   const [tempImages, setTempImages] = useState<Map<string, File>>(new Map());
   const [existingAttachmentIds, setExistingAttachmentIds] = useState<string[]>([]);

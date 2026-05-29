@@ -18,7 +18,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response;
 
-      if (status === 401) {
+      if (status === 401 && !(error.config as Record<string, unknown>)?.skipAuthExpiredEvent) {
         window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: data }));
       }
 

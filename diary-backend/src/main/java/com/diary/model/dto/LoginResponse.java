@@ -6,18 +6,16 @@ public class LoginResponse {
 
     private String userId;
     private String encryptedDek;
-    private String encryptedDekRecovery;
     private String saltEnc;
     private int kdfVersion;
     private Map<String, Object> kdfParams;
     private boolean hasRecovery;
 
-    public LoginResponse(String userId, String encryptedDek, String encryptedDekRecovery,
+    public LoginResponse(String userId, String encryptedDek,
                          String saltEnc, int kdfVersion, Map<String, Object> kdfParams,
                          boolean hasRecovery) {
         this.userId = userId;
         this.encryptedDek = encryptedDek;
-        this.encryptedDekRecovery = encryptedDekRecovery;
         this.saltEnc = saltEnc;
         this.kdfVersion = kdfVersion;
         this.kdfParams = kdfParams;
@@ -26,7 +24,6 @@ public class LoginResponse {
 
     public String getUserId() { return userId; }
     public String getEncryptedDek() { return encryptedDek; }
-    public String getEncryptedDekRecovery() { return encryptedDekRecovery; }
     public String getSaltEnc() { return saltEnc; }
     public int getKdfVersion() { return kdfVersion; }
     public Map<String, Object> getKdfParams() { return kdfParams; }

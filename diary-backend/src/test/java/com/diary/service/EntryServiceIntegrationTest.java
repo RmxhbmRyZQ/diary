@@ -89,7 +89,7 @@ class EntryServiceIntegrationTest {
         createEntry(LocalDate.of(2026, 5, 27), "happy", "sunny");
         createEntry(LocalDate.of(2026, 5, 28), "sad", "rainy");
 
-        List<EntrySyncItem> summaries = entryService.getSyncSummaries(userId);
+        List<EntrySyncItem> summaries = entryService.getSyncSummaries(userId, null);
         assertThat(summaries).hasSize(2);
         assertThat(summaries.get(0).getId()).isNotNull();
         assertThat(summaries.get(0).getUpdatedAt()).isNotNull();

@@ -57,7 +57,7 @@ function AppRoutes() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
-        <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/recovery" element={<GuestRoute><RecoveryPage /></GuestRoute>} />
         <Route path="/unlock" element={<UnlockRoute><UnlockPage /></UnlockRoute>} />
         <Route path="/" element={<ProtectedRoute><DiaryListPage /></ProtectedRoute>} />

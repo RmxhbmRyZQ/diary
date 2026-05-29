@@ -23,9 +23,6 @@ public class RegisterRequest {
     private String encryptedDek;
 
     @NotBlank
-    private String encryptedDekRecovery;
-
-    @NotBlank
     private String saltEnc;
 
     private int kdfVersion;
@@ -44,9 +41,6 @@ public class RegisterRequest {
 
     public String getEncryptedDek() { return encryptedDek; }
     public void setEncryptedDek(String encryptedDek) { this.encryptedDek = encryptedDek; }
-
-    public String getEncryptedDekRecovery() { return encryptedDekRecovery; }
-    public void setEncryptedDekRecovery(String encryptedDekRecovery) { this.encryptedDekRecovery = encryptedDekRecovery; }
 
     public String getSaltEnc() { return saltEnc; }
     public void setSaltEnc(String saltEnc) { this.saltEnc = saltEnc; }

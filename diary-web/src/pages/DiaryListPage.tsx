@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAllEntries, type CachedEntry } from '../db/entries';
-import { fullSync } from '../services/syncService';
+import { fullSync, SyncError } from '../services/syncService';
 import EntryCard from '../components/diary/EntryCard';
 import MoodPicker from '../components/diary/MoodPicker';
 import WeatherPicker from '../components/diary/WeatherPicker';
@@ -34,8 +34,9 @@ export default function DiaryListPage() {
         const all = await getAllEntries();
         all.sort((a, b) => b.diaryDate.localeCompare(a.diaryDate));
         setEntries(all);
-      } catch {
-        setSyncError('同步失败，请检查网络连接');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '同步失败，请检查网络连接';
+        setSyncError(msg);
         const cached = await getAllEntries();
         cached.sort((a, b) => b.diaryDate.localeCompare(a.diaryDate));
         setEntries(cached);
