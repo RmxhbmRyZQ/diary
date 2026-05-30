@@ -14,7 +14,13 @@ export function renderMarkdownToHtml(md: string): string {
 
   html = html.replace(
     /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" class="text-warm-600 underline" target="_blank" rel="noopener noreferrer">$1</a>',
+    (_match: string, text: string, url: string) => {
+      const safe = /^(https?:|mailto:|\/|#)/i.test(url) ? url : '';
+      if (safe) {
+        return `<a href="${safe}" class="text-warm-600 underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
+      }
+      return text;
+    },
   );
 
   html = html.replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>');

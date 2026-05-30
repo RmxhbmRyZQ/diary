@@ -112,7 +112,7 @@ describe('AuthContext', () => {
       vi.mocked(authApi.login).mockResolvedValue({
         code: 0,
         message: '成功',
-        data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', encryptedDekRecovery: '', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
+        data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
       });
       vi.mocked(cryptoService.deriveKey).mockResolvedValue(mockKek);
       vi.mocked(cryptoService.decryptDEK).mockResolvedValue(mockDek);
@@ -170,15 +170,19 @@ describe('AuthContext', () => {
   });
 
   describe('register', () => {
-    it('should register and return recovery key', async () => {
+    it('should register and auto-login', async () => {
       vi.mocked(cryptoService.generateRandomBytes).mockReturnValue(new Uint8Array(16).fill(0x42));
       vi.mocked(cryptoUtils.arrayBufferToBase64).mockReturnValue('saltB64');
       vi.mocked(cryptoService.deriveKey).mockResolvedValue({} as CryptoKey);
       vi.mocked(cryptoService.generateDEK).mockResolvedValue({} as CryptoKey);
       vi.mocked(cryptoService.encryptDEK).mockResolvedValue({ encryptedPayload: 'encDek', iv: 'ivB64' });
       vi.mocked(cryptoService.deriveAuthKeyBytes).mockResolvedValue(new Uint8Array(32).buffer);
-      vi.mocked(cryptoService.hashAuthKey).mockResolvedValue('hash123');
       vi.mocked(authApi.register).mockResolvedValue({ code: 0, message: '注册成功', data: { user_id: 'uuid', created_at: '2026-01-01T00:00:00Z' } });
+      vi.mocked(authApi.login).mockResolvedValue({
+        code: 0, message: '成功',
+        data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
+      });
+      vi.mocked(cryptoService.decryptDEK).mockResolvedValue({} as CryptoKey);
 
       render(<TestConsumer />, { wrapper: Wrapper });
 
@@ -198,16 +202,17 @@ describe('AuthContext', () => {
         </AuthProvider>,
       );
 
-      let result: { recoveryKey: string } | undefined;
       await act(async () => {
-        result = await auth!.register('alice', 'Password123');
+        await auth!.register('alice', 'Password123');
       });
 
-      expect(result!.recoveryKey).toBeTruthy();
       expect(authApi.register).toHaveBeenCalled();
       const callArgs = vi.mocked(authApi.register).mock.calls[0][0];
       expect(callArgs.username).toBe('alice');
       expect(callArgs.authKey).toBe('saltB64');
+
+      // Should auto-login after registration
+      expect(authApi.login).toHaveBeenCalledWith('alice', 'saltB64');
     });
   });
 
@@ -225,7 +230,7 @@ describe('AuthContext', () => {
       vi.mocked(cryptoUtils.arrayBufferToBase64).mockReturnValue('authKeyB64');
       vi.mocked(authApi.login).mockResolvedValue({
         code: 0, message: '成功',
-        data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', encryptedDekRecovery: '', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
+        data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
       });
       vi.mocked(cryptoService.deriveKey).mockResolvedValue({} as CryptoKey);
       vi.mocked(cryptoService.decryptDEK).mockResolvedValue({} as CryptoKey);

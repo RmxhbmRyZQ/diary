@@ -113,7 +113,13 @@ describe('RegisterPage', () => {
     expect(screen.getByRole('alert')).toBeTruthy();
   });
 
-  it('should show recovery key after successful registration', async () => {
+  it('should show recovery choice after successful registration', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      code: 0, message: '成功',
+      data: { userId: 'user-1', encryptedDek: 'encDek', saltEnc: 'saltEnc', kdfVersion: 1, kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 }, hasRecovery: false },
+    });
+    vi.mocked(cryptoService.decryptDEK).mockResolvedValue({} as CryptoKey);
+
     renderRegisterPage();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '注册' })).toBeTruthy();
@@ -130,7 +136,7 @@ describe('RegisterPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '注册' }));
 
     await waitFor(() => {
-      expect(screen.getByText('保存你的恢复密钥')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: '设置恢复口令' })).toBeTruthy();
     });
   });
 });

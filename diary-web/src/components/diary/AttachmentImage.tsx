@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { downloadAttachment } from '../../api/attachments';
-import { getAttachmentIv } from '../../db/attachments';
+import { getAttachmentIv, putAttachmentIv } from '../../db/attachments';
 import { useAuth } from '../../context/AuthContext';
 import { base64ToArrayBuffer } from '../../crypto/utils';
 
@@ -22,7 +22,7 @@ export default function AttachmentImage({ attachmentId, alt = '', className = ''
 
     (async () => {
       try {
-        const { data, sha256, contentType } = await downloadAttachment(attachmentId);
+        const { data, sha256, iv: headerIv, contentType } = await downloadAttachment(attachmentId);
 
         // Verify SHA-256
         if (sha256) {
@@ -36,8 +36,12 @@ export default function AttachmentImage({ attachmentId, alt = '', className = ''
           }
         }
 
-        // Look up the IV from local storage
-        const ivB64 = await getAttachmentIv(attachmentId);
+        // Look up the IV from local storage, fall back to response header
+        let ivB64 = await getAttachmentIv(attachmentId);
+        if (!ivB64 && headerIv) {
+          ivB64 = headerIv;
+          await putAttachmentIv(attachmentId, headerIv);
+        }
         if (!ivB64) {
           if (!cancelled) setError(true);
           return;

@@ -98,6 +98,7 @@ export default function EditorPage() {
         setVersion(existing.serverVersion);
         setExistingAttachmentIds(existing.attachmentIds);
         setEditTargetId(existing.diaryId);
+        setTempImages(new Map());
       } else {
         setTitle('');
         setContent('');
@@ -266,7 +267,7 @@ export default function EditorPage() {
       setLoading(false);
     }
   }, [dek, title, content, tags, mood, weather, favorite, diaryDate, version,
-      tempImages, existingAttachmentIds, isEdit, id, navigate]);
+      tempImages, existingAttachmentIds, isEdit, editTargetId, id, navigate]);
 
   const handleDelete = useCallback(async () => {
     const effectiveId = editTargetId || id;

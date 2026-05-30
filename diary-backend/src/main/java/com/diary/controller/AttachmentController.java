@@ -57,6 +57,7 @@ public class AttachmentController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + attachment.getId() + "\"")
                 .header("X-Content-SHA256", attachment.getSha256())
+                .header("X-Content-IV", attachment.getIv())
                 .body(resource);
     }
 

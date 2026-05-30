@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { deleteAccount, setRecovery, deleteRecovery, getRecovery } from '../api/auth';
 import { getAllEntries } from '../db/entries';
-import { getAttachmentIv } from '../db/attachments';
+import { getAttachmentIv, putAttachmentIv } from '../db/attachments';
 import { syncEntries, batchGetEntries } from '../api/entries';
 import { downloadAttachment } from '../api/attachments';
 import { deriveKey, generateRandomBytes, deriveAuthKeyBytes } from '../crypto/cryptoService';
@@ -136,11 +136,13 @@ export default function SettingsPage() {
     try {
       const recoveryResult = await getRecovery(user.username);
       const saltEncB64 = recoveryResult.data?.salt_enc;
-      if (saltEncB64) {
-        const saltEnc = new Uint8Array(base64ToArrayBuffer(saltEncB64));
-        const authKeyBytes = await deriveAuthKeyBytes(recoveryPwdForDelete, saltEnc, 600000);
-        await deleteRecovery(arrayBufferToBase64(authKeyBytes));
+      if (!saltEncB64) {
+        setError('无法获取加密参数，请重试');
+        return;
       }
+      const saltEnc = new Uint8Array(base64ToArrayBuffer(saltEncB64));
+      const authKeyBytes = await deriveAuthKeyBytes(recoveryPwdForDelete, saltEnc, 600000);
+      await deleteRecovery(arrayBufferToBase64(authKeyBytes));
       setRecoverySet(false);
       setMessage('托管信息已删除');
     } catch (err: unknown) {
@@ -166,8 +168,9 @@ export default function SettingsPage() {
         for (const match of matches) {
           const [fullMatch, alt, attId] = match;
           try {
-            const { data, contentType } = await downloadAttachment(attId);
-            const ivB64 = await getAttachmentIv(attId);
+            const { data, iv: headerIv, contentType } = await downloadAttachment(attId);
+            let ivB64 = await getAttachmentIv(attId);
+            if (!ivB64 && headerIv) { ivB64 = headerIv; await putAttachmentIv(attId, headerIv); }
             if (ivB64) {
               const iv = new Uint8Array(base64ToArrayBuffer(ivB64));
               const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, dek, data);
@@ -239,8 +242,9 @@ export default function SettingsPage() {
           if (seenAttIds.has(attId)) continue;
           seenAttIds.add(attId);
           try {
-            const { data, contentType } = await downloadAttachment(attId);
-            const ivB64 = await getAttachmentIv(attId);
+            const { data, iv: headerIv, contentType } = await downloadAttachment(attId);
+            let ivB64 = await getAttachmentIv(attId);
+            if (!ivB64 && headerIv) { ivB64 = headerIv; await putAttachmentIv(attId, headerIv); }
             if (ivB64) {
               allAttachments.push({
                 id: attId,

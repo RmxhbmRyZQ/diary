@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, type DragEvent, type ClipboardEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, type DragEvent, type ClipboardEvent } from 'react';
 import { Eye, Edit3 } from 'lucide-react';
 import { renderMarkdownToHtml } from '../../utils/markdown';
 
@@ -8,6 +8,41 @@ interface MarkdownEditorProps {
   tempImages: Map<string, File>;
   onImagesChange: (images: Map<string, File>) => void;
   disabled?: boolean;
+}
+
+function TempImageThumb({ file, alt, onRemove }: { file: File; alt: string; onRemove: () => void }) {
+  const urlRef = useRef<string | null>(null);
+
+  if (!urlRef.current) {
+    urlRef.current = URL.createObjectURL(file);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <div className="relative group">
+      <img
+        src={urlRef.current}
+        alt={alt}
+        className="h-16 w-16 object-cover rounded-lg border border-gray-200"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full
+                   text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        ×
+      </button>
+    </div>
+  );
 }
 
 function generateTempId(): string {
@@ -142,21 +177,12 @@ export default function MarkdownEditor({
       {tempImages.size > 0 && (
         <div className="flex flex-wrap gap-2">
           {Array.from(tempImages.entries()).map(([id, file]) => (
-            <div key={id} className="relative group">
-              <img
-                src={URL.createObjectURL(file)}
-                alt={file.name}
-                className="h-16 w-16 object-cover rounded-lg border border-gray-200"
-              />
-              <button
-                type="button"
-                onClick={() => handleRemoveImage(id)}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full
-                           text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                ×
-              </button>
-            </div>
+            <TempImageThumb
+              key={id}
+              file={file}
+              alt={file.name}
+              onRemove={() => handleRemoveImage(id)}
+            />
           ))}
         </div>
       )}

@@ -32,7 +32,6 @@ describe('api/auth', () => {
         authKey: 'hash123',
         saltAuth: 'saltA',
         encryptedDek: 'encDek',
-        encryptedDekRecovery: 'encDekRec',
         saltEnc: 'saltE',
         kdfVersion: 1,
         kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 },
@@ -63,7 +62,6 @@ describe('api/auth', () => {
         data: {
           userId: 'uuid-1',
           encryptedDek: 'encDek',
-          encryptedDekRecovery: 'encDekRec',
           saltEnc: 'saltE',
           kdfVersion: 1,
           kdfParams: { algorithm: 'pbkdf2-sha256', iterations: 600000 },
@@ -100,7 +98,6 @@ describe('api/auth', () => {
         'oldAuthKey',
         'newHash',
         'newDek',
-        'newDekRec',
         'newSalt',
         { algorithm: 'pbkdf2-sha256', iterations: 800000 },
       );
@@ -138,12 +135,14 @@ describe('api/auth', () => {
         data: null,
       });
 
-      const result = await setRecovery('recoveryDataB64', 'recoverySaltB64');
+      const result = await setRecovery('recoveryDataB64', 'recoverySaltB64', 'challengeB64', 'encryptedChallengeB64');
       expect(result.code).toBe(0);
 
       const req = JSON.parse(mock.history.put[0].data);
       expect(req.recoveryData).toBe('recoveryDataB64');
       expect(req.recoverySalt).toBe('recoverySaltB64');
+      expect(req.challenge).toBe('challengeB64');
+      expect(req.encryptedChallenge).toBe('encryptedChallengeB64');
     });
   });
 
@@ -156,14 +155,14 @@ describe('api/auth', () => {
           recovery_data: 'recData',
           recovery_salt: 'recSalt',
           salt_enc: 'saltEnc',
-          encrypted_dek_recovery: 'encDekRec',
-          recovery_token: 'token123',
+          challenge: 'challenge',
+          challenge_iv: 'challengeIv',
         },
       });
 
       const result = await getRecovery('alice');
       expect(result.code).toBe(0);
-      expect(result.data.recovery_token).toBe('token123');
+      expect(result.data.challenge).toBe('challenge');
 
       const params = mock.history.get[0].params;
       expect(params.username).toBe('alice');
@@ -180,18 +179,17 @@ describe('api/auth', () => {
 
       const result = await resetPassword(
         'alice',
-        'token123',
         'newHash',
         'newDek',
-        'newDekRec',
         'newSalt',
         { algorithm: 'pbkdf2-sha256', iterations: 800000 },
+        'encryptedChallenge',
       );
       expect(result.code).toBe(0);
 
       const req = JSON.parse(mock.history.post[0].data);
       expect(req.username).toBe('alice');
-      expect(req.recoveryToken).toBe('token123');
+      expect(req.encryptedChallenge).toBe('encryptedChallenge');
     });
   });
 

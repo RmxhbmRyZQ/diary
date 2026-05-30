@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SecretDiary" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/warm_white</item>
+        <item name="android:statusBarColor">@color/warm_white</item>
+        <item name="android:navigationBarColor">@color/warm_white</item>
+        <!-- FLAG_SECURE 在敏感页面通过代码设置 -->
+    </style>
+</resources>

@@ -14,7 +14,12 @@ diary-backend/需求文档.md
 diary-backend/接口文档.md
 
 diary-android/.claude/
-diary-android/target/
+diary-android/.agents/
+diary-android/.gradle/
 diary-android/.idea/
+diary-android/build/
+diary-android/app/build/
+diary-android/target/
+diary-android/skills-lock.json
 diary-android/需求文档.md
 diary-android/接口文档.md

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="warm_white">#FFF8F0</color>
+    <color name="warm_pink">#FCE4EC</color>
+    <color name="warm_sage">#C8E6C9</color>
+    <color name="warm_primary">#D4A574</color>
+    <color name="warm_primary_dark">#B8860B</color>
+    <color name="warm_surface">#FFFDF5</color>
+    <color name="warm_on_surface">#3E2723</color>
+    <color name="warm_secondary">#E8B4B8</color>
+</resources>
