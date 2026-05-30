@@ -11,6 +11,8 @@ import com.secretdiary.app.data.remote.api.ApiService
 import com.secretdiary.app.data.repository.DiaryRepository
 import com.secretdiary.app.security.CryptoManager
 import com.secretdiary.app.security.SessionManager
+import com.secretdiary.app.sync.SyncManager
+import com.secretdiary.app.sync.SyncState
 import com.secretdiary.app.util.NetworkMonitor
 import com.secretdiary.app.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -55,6 +58,7 @@ class DiaryEditViewModel @Inject constructor(
     private val apiService: ApiService,
     private val cryptoManager: CryptoManager,
     private val sessionManager: SessionManager,
+    private val syncManager: SyncManager,
     private val networkMonitor: NetworkMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -73,36 +77,29 @@ class DiaryEditViewModel @Inject constructor(
     }
 
     fun loadDiary(diaryDate: String) {
-        // 切换日期时重置附件相关状态
         _uiState.value = _uiState.value.copy(
-            diaryDate = diaryDate,
-            isNew = true,
-            attachmentIds = emptyList(),
-            removedAttachmentIds = emptyList(),
-            pendingImages = emptyList(),
-            title = "",
-            content = "",
-            mood = null,
-            weather = null,
-            favorite = false,
-            tags = "",
-            existingEntryId = null,
-            serverVersion = null,
-            isPreviewing = false
+            diaryDate = diaryDate, isNew = true,
+            attachmentIds = emptyList(), removedAttachmentIds = emptyList(),
+            pendingImages = emptyList(), title = "", content = "",
+            mood = null, weather = null, favorite = false, tags = "",
+            existingEntryId = null, serverVersion = null, isPreviewing = false
         )
         viewModelScope.launch {
-            val existing = repository.getByDiaryDate(diaryDate)
+            var existing = repository.getByDiaryDate(diaryDate)
+            // 本地没找到且在线 → 触发一次同步从服务端拉取
+            if (existing == null && networkMonitor.isOnline.value) {
+                syncManager.performSync()
+                // 等待同步完成
+                syncManager.syncState.first { it is SyncState.Success || it is SyncState.Failed }
+                existing = repository.getByDiaryDate(diaryDate)
+            }
             if (existing != null) {
                 _uiState.value = _uiState.value.copy(
-                    title = existing.title,
-                    content = existing.content,
-                    mood = existing.mood,
-                    weather = existing.weather,
-                    favorite = existing.favorite,
-                    tags = existing.tags.joinToString(", "),
+                    title = existing.title, content = existing.content,
+                    mood = existing.mood, weather = existing.weather,
+                    favorite = existing.favorite, tags = existing.tags.joinToString(", "),
                     attachmentIds = existing.attachmentIds,
-                    existingEntryId = existing.id,
-                    serverVersion = existing.serverVersion,
+                    existingEntryId = existing.id, serverVersion = existing.serverVersion,
                     isNew = false
                 )
             }
@@ -259,7 +256,13 @@ class DiaryEditViewModel @Inject constructor(
                     )
                 }
                 result.fold(
-                    onSuccess = { _uiState.value = _uiState.value.copy(isLoading = false, saved = true) },
+                    onSuccess = { diary ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false, saved = true,
+                            existingEntryId = diary.id,  // 同步服务端 ID
+                            serverVersion = diary.serverVersion
+                        )
+                    },
                     onFailure = { _uiState.value = _uiState.value.copy(isLoading = false, error = it.message) }
                 )
             } catch (e: Exception) {

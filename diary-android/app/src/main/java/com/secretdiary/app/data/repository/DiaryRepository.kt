@@ -136,9 +136,19 @@ class DiaryRepository @Inject constructor(
                 )
                 if (response.isSuccessful && response.body()?.code == 0) {
                     val data = response.body()!!.data!!
-                    entryDao.updateSyncMeta(id, data.version, data.updatedAt)
-                    val updated = entryDao.getById(id) ?: entity
-                    Result.success(updated.toDiary())
+                    // 服务端可能返回不同的 ID，需同步到本地
+                    val serverId = data.id
+                    if (serverId != id) {
+                        entryDao.deleteById(id)
+                        val synced = entity.copy(id = serverId)
+                        entryDao.upsert(synced)
+                        entryDao.updateSyncMeta(serverId, data.version, data.updatedAt)
+                        Result.success(entryDao.getById(serverId)!!.toDiary())
+                    } else {
+                        entryDao.updateSyncMeta(id, data.version, data.updatedAt)
+                        val updated = entryDao.getById(id) ?: entity
+                        Result.success(updated.toDiary())
+                    }
                 } else {
                     // 回落本地保存，但向 UI 报告失败
                     entryDao.updateDirty(id, true)

@@ -1,7 +1,18 @@
 package com.secretdiary.app.ui.login
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -90,16 +101,21 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             WarmButton(
-                text = if (uiState.isLoading) "登录中..." else "登录",
+                text = "登录",
                 onClick = viewModel::login,
                 enabled = !uiState.isLoading
             )
 
+            if (uiState.isLoading) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LoginProgressBar()
+            }
+
             if (uiState.isBiometricAvailable) {
                 Spacer(modifier = Modifier.height(12.dp))
-                val activity = LocalContext.current as FragmentActivity
+                val activity = LocalContext.current as? FragmentActivity
                 OutlinedButton(
-                    onClick = { viewModel.startBiometricAuth(activity) },
+                    onClick = { activity?.let { viewModel.startBiometricAuth(it) } },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                 ) {
@@ -127,6 +143,37 @@ fun LoginScreen(
             title = { Text("登录失败") },
             text = { Text(it) },
             confirmButton = { TextButton(onClick = viewModel::clearError) { Text("确定") } }
+        )
+    }
+}
+
+@Composable
+private fun LoginProgressBar() {
+    val infiniteTransition = rememberInfiniteTransition(label = "loginProgress")
+    val offset by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "offset"
+    )
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(primary.copy(alpha = 0.15f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.4f)
+                .fillMaxHeight()
+                .offset(x = (offset * 300).dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(primary)
         )
     }
 }

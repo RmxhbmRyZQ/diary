@@ -26,6 +26,8 @@ class SessionManager @Inject constructor(
         private const val KEY_DEK_STORED_AT = "dek_stored_at"
         private const val KEY_LAST_SESSION = "last_session_active"
         private const val KEY_HAS_RECOVERY = "has_recovery"
+        private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
+        private const val KEY_DEK_RAW = "dek_raw"  // DEK 原始字节（Base64），用于重启后恢复
         private const val DEK_TTL_MILLIS = 30 * 60 * 1000L // 30 分钟
     }
 
@@ -69,6 +71,7 @@ class SessionManager @Inject constructor(
             .putString(KEY_WRAPPED_DEK, wrappedDek)
             .putString(KEY_SALT_ENC, saltEnc)
             .putString(KEY_SALT_AUTH, saltAuth)
+            .putString(KEY_DEK_RAW, android.util.Base64.encodeToString(dek.encoded, android.util.Base64.NO_WRAP))
             .putLong(KEY_DEK_STORED_AT, currentTimeMillis())
             .putBoolean(KEY_LAST_SESSION, true)
             .putBoolean(KEY_HAS_RECOVERY, hasRecovery)
@@ -90,6 +93,12 @@ class SessionManager @Inject constructor(
         prefs.edit().putBoolean(KEY_HAS_RECOVERY, value).apply()
     }
 
+    /** 生物识别开关偏好（持久化，独立于 DEK 状态） */
+    fun isBiometricEnabled(): Boolean = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
+    fun setBiometricEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
+    }
+
     /**
      * 获取内存中的活跃 DEK，若 TTL 过期则返回 null。
      */
@@ -99,7 +108,16 @@ class SessionManager @Inject constructor(
             clearAll()
             return null
         }
-        return activeDEK
+        // 内存中有则直接返回
+        if (activeDEK != null) return activeDEK
+        // 重启后从持久化恢复（EncryptedSharedPreferences 由 Keystore 保护）
+        val rawB64 = prefs.getString(KEY_DEK_RAW, null) ?: return null
+        return try {
+            val keyBytes = android.util.Base64.decode(rawB64, android.util.Base64.NO_WRAP)
+            val key = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
+            activeDEK = key
+            key
+        } catch (_: Exception) { null }
     }
 
     /**
@@ -145,16 +163,22 @@ class SessionManager @Inject constructor(
         prefs.edit()
             .remove(KEY_WRAPPED_DEK)
             .remove(KEY_SALT_ENC)
+            .remove(KEY_DEK_RAW)
             .remove(KEY_DEK_STORED_AT)
             .putBoolean(KEY_LAST_SESSION, false)
             .apply()
     }
 
     /**
-     * 完全清除所有会话数据（用于 401 处理）。
+     * 清除会话数据（用于 401 / 登出 / 密码修改）。
+     * 保留用户偏好：生物识别开关、恢复托管状态。
      */
     fun clearAll() {
+        val biometric = isBiometricEnabled()
+        val recovery = hasRecovery()
         prefs.edit().clear().apply()
+        setBiometricEnabled(biometric)
+        if (recovery) setHasRecovery(true)
     }
 
     /**

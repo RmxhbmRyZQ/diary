@@ -11,10 +11,13 @@ import com.secretdiary.app.security.SessionManager
 import com.secretdiary.app.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -38,7 +41,11 @@ class LoginViewModel @Inject constructor(
 
     private val saltPrefs = context.getSharedPreferences("diary_salts", Context.MODE_PRIVATE)
 
-    private val _uiState = MutableStateFlow(LoginUiState(isBiometricAvailable = biometricAuth.canAuthenticate()))
+    private val _uiState = MutableStateFlow(LoginUiState(
+        isBiometricAvailable = biometricAuth.canAuthenticate()
+            && sessionManager.isBiometricEnabled()
+            && sessionManager.hasValidDEK()
+    ))
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun onUsernameChanged(value: String) { _uiState.value = _uiState.value.copy(username = value) }
@@ -54,70 +61,66 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val iterations = apiService.getConfig().body()?.data?.kdf?.iterations ?: 600_000
+                // 网络请求在 IO 线程并行执行
+                val configDeferred = async(Dispatchers.IO) {
+                    apiService.getConfig().body()?.data?.kdf?.iterations ?: 600_000
+                }
+                val saltDeferred = async(Dispatchers.IO) {
+                    try {
+                        val r = apiService.getRecoveryInfo(state.username)
+                        if (r.isSuccessful && r.body()?.code == 0) r.body()!!.data?.saltEnc else null
+                    } catch (_: Exception) { null }
+                }
 
-                // 对齐 Web 端：saltAuth == saltEnc（统一盐）
-                // 优先从服务端获取 salt_enc，失败时回退到本地存储
-                var saltEncB64: String? = null
-                try {
-                    val recoveryResult = apiService.getRecoveryInfo(state.username)
-                    if (recoveryResult.isSuccessful && recoveryResult.body()?.code == 0) {
-                        saltEncB64 = recoveryResult.body()!!.data?.saltEnc
-                    }
-                } catch (_: Exception) { }
+                val iterations = configDeferred.await()
+                var saltEncB64: String? = saltDeferred.await()
 
-                // 回退 1：本地 diary_salts（同设备之前登录过）
                 if (saltEncB64.isNullOrEmpty()) {
                     saltEncB64 = saltPrefs.getString("saltAuth_${state.username}", null)
                 }
-
-                // 回退 2：本地存储的 saltEnc
                 if (saltEncB64.isNullOrEmpty()) {
                     saltEncB64 = saltPrefs.getString("saltEnc_${state.username}", null)
                 }
 
                 if (saltEncB64.isNullOrEmpty()) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "未找到加密参数，请确认该账户已注册或恢复口令后重试"
-                    )
+                    _uiState.value = _uiState.value.copy(isLoading = false,
+                        error = "未找到加密参数，请确认该账户已注册或恢复口令后重试")
                     return@launch
                 }
 
                 val saltBytes = android.util.Base64.decode(saltEncB64, android.util.Base64.NO_WRAP)
+                val password = state.password
 
-                // 1. 派生 authKey → 登录验证
-                val authKey = cryptoManager.deriveAuthKey(state.password, saltBytes, iterations)
-                val loginResponse = apiService.login(LoginRequest(state.username, authKey))
-                if (!loginResponse.isSuccessful || loginResponse.body()?.code != 0) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = loginResponse.body()?.message ?: "用户名或密码错误"
-                    )
+                // PBKDF2 计算密集，在 Default 线程执行，避免阻塞 UI 动画
+                val loginData = withContext(Dispatchers.Default) {
+                    val ak = cryptoManager.deriveAuthKey(password, saltBytes, iterations)
+                    apiService.login(LoginRequest(state.username, ak))
+                }
+
+                if (!loginData.isSuccessful || loginData.body()?.code != 0) {
+                    _uiState.value = _uiState.value.copy(isLoading = false,
+                        error = loginData.body()?.message ?: "用户名或密码错误")
                     return@launch
                 }
 
-                val data = loginResponse.body()!!.data!!
+                val data = loginData.body()!!.data!!
 
-                // 2. 派生 KEK → 解密 DEK（使用同一个盐）
-                val kek = cryptoManager.deriveKEK(state.password, saltBytes, data.kdfParams.iterations)
-                val dek = cryptoManager.unwrapKey(data.encryptedDek, kek)
+                // KEK 派生 + DEK 解包也在 Default 线程
+                val dek = withContext(Dispatchers.Default) {
+                    val kek = cryptoManager.deriveKEK(password, saltBytes, data.kdfParams.iterations)
+                    cryptoManager.unwrapKey(data.encryptedDek, kek)
+                }
 
-                // 3. 持久化盐值，供后续修改密码等操作使用
                 saltPrefs.edit()
                     .putString("saltAuth_${state.username}", saltEncB64)
                     .putString("saltEnc_${state.username}", saltEncB64)
                     .apply()
 
                 sessionManager.onLoginSuccess(
-                    username = state.username,
-                    wrappedDek = data.encryptedDek,
-                    saltEnc = saltEncB64,
-                    saltAuth = saltEncB64,
-                    dek = dek,
-                    hasRecovery = data.hasRecovery
+                    username = state.username, wrappedDek = data.encryptedDek,
+                    saltEnc = saltEncB64, saltAuth = saltEncB64,
+                    dek = dek, hasRecovery = data.hasRecovery
                 )
-                // 先跳转，同步在后台进行
                 _uiState.value = _uiState.value.copy(isLoading = false, loginSuccess = true)
                 syncManager.performSync()
             } catch (e: Exception) {

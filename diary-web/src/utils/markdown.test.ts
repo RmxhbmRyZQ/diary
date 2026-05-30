@@ -44,4 +44,10 @@ describe('renderMarkdownToHtml', () => {
     const html = renderMarkdownToHtml('[xss](vbscript:msgbox(1))');
     expect(html).not.toContain('href="vbscript:');
   });
+
+  it('escapes double quote in URL', () => {
+    const html = renderMarkdownToHtml('[link](https://x.com?q="foo")');
+    expect(html).not.toContain('q=""');
+    expect(html).toContain('q=&quot;foo&quot;');
+  });
 });

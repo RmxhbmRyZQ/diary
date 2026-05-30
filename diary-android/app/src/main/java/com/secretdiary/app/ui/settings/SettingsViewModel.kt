@@ -48,7 +48,7 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState(
         hasRecovery = sessionManager.hasRecovery(),
-        isBiometricEnabled = sessionManager.getActiveDEK() != null  // DEK 存在说明生物识别已启用
+        isBiometricEnabled = sessionManager.isBiometricEnabled()
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -223,14 +223,15 @@ class SettingsViewModel @Inject constructor(
 
     fun toggleBiometric(enabled: Boolean) {
         if (enabled) {
-            // 生物识别开启依赖 DEK 是否在内存中
             if (sessionManager.getActiveDEK() != null) {
+                sessionManager.setBiometricEnabled(true)
                 _uiState.value = _uiState.value.copy(isBiometricEnabled = true)
             } else {
                 _uiState.value = _uiState.value.copy(error = "DEK 已过期，请重新登录后开启")
             }
         } else {
             sessionManager.clearDEK()
+            sessionManager.setBiometricEnabled(false)
             _uiState.value = _uiState.value.copy(isBiometricEnabled = false)
         }
     }

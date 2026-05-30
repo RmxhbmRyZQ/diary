@@ -11,6 +11,7 @@ import coil.request.Options
 import com.secretdiary.app.data.local.dao.AttachmentIvDao
 import com.secretdiary.app.data.local.entity.AttachmentIvEntity
 import com.secretdiary.app.security.CryptoManager
+import com.secretdiary.app.util.AppConfig
 import com.secretdiary.app.security.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -80,15 +81,11 @@ class AttachmentFetcher(
         private val okHttpClient: OkHttpClient
     ) : Fetcher.Factory<android.net.Uri> {
 
-        companion object {
-            private const val BASE_URL = "http://10.0.2.2:8080/api/v1/"
-        }
-
         override fun create(data: android.net.Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
             if (data.scheme != "attachment") return null
             return AttachmentFetcher(
                 data.schemeSpecificPart,
-                BASE_URL,
+                AppConfig.BASE_URL,
                 attachmentIvDao,
                 cryptoManager,
                 sessionManager,

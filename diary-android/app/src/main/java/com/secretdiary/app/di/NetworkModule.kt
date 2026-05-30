@@ -3,6 +3,7 @@ package com.secretdiary.app.di
 import android.content.Context
 import com.secretdiary.app.data.remote.api.*
 import com.secretdiary.app.security.SessionManager
+import com.secretdiary.app.util.AppConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,8 +22,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
-
-    private const val BASE_URL = "http://10.0.2.2:8080/api/v1/"
 
     @Provides
     @Singleton
@@ -50,7 +49,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL).client(okHttpClient)
+        .baseUrl(AppConfig.BASE_URL).client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create()).build()
 
     @Provides

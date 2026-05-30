@@ -15,7 +15,7 @@ export function renderMarkdownToHtml(md: string): string {
   html = html.replace(
     /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g,
     (_match: string, text: string, url: string) => {
-      const safe = /^(https?:|mailto:|\/|#)/i.test(url) ? url : '';
+      const safe = /^(https?:|mailto:|\/|#)/i.test(url) ? url.replace(/"/g, '&quot;') : '';
       if (safe) {
         return `<a href="${safe}" class="text-warm-600 underline" target="_blank" rel="noopener noreferrer">${text}</a>`;
       }

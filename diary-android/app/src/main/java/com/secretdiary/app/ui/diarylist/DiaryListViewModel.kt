@@ -39,7 +39,7 @@ class DiaryListViewModel @Inject constructor(
     init {
         observeDiaries(repository.observeAllDiaries())
         observeSyncState()
-        syncManager.performSync()
+        // 同步由 LoginViewModel 或手动刷新触发，避免重复调用
     }
 
     private fun observeDiaries(flow: Flow<List<Diary>>) {
