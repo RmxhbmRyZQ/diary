@@ -141,9 +141,12 @@ class SyncManagerTest {
         coEvery { repository.updateLastSyncTimestamp(any()) } just runs
 
         val dirtyEntity = com.secretdiary.app.data.local.entity.EntryEntity(
-            id = "dirty1", diaryDate = "2026-05-29", title = "dirty", content = "dirty",
-            summary = "dirty", tags = "[]", mood = null, weather = null, favorite = false,
-            attachmentIds = "[]", serverVersion = null, serverUpdatedAt = null,
+            id = "dirty1", userId = "testuser", diaryDate = "2026-05-29",
+            title = "dirty",
+            encryptedContent = "enc", contentIv = "iv",
+            summary = "dirty", tags = "[]",
+            mood = null, weather = null, favorite = false, attachmentIds = "[]",
+            serverVersion = null, serverUpdatedAt = null,
             localUpdatedAt = "2026-05-29T10:00:00+08:00", isDirty = true
         )
         coEvery { repository.getEntriesByIds(listOf("dirty1")) } returns listOf(dirtyEntity)
@@ -179,9 +182,12 @@ class SyncManagerTest {
         coEvery { repository.updateLastSyncTimestamp(any()) } just runs
 
         val dirtyEntity = com.secretdiary.app.data.local.entity.EntryEntity(
-            id = "conflict1", diaryDate = "2026-05-29", title = "conflict", content = "conflict",
-            summary = "c", tags = "[]", mood = null, weather = null, favorite = false,
-            attachmentIds = "[]", serverVersion = 2, serverUpdatedAt = "2026-05-28T10:00:00+08:00",
+            id = "conflict1", userId = "testuser", diaryDate = "2026-05-29",
+            title = "conflict",
+            encryptedContent = "enc", contentIv = "iv",
+            summary = "c", tags = "[]",
+            mood = null, weather = null, favorite = false, attachmentIds = "[]",
+            serverVersion = 2, serverUpdatedAt = "2026-05-28T10:00:00+08:00",
             localUpdatedAt = null, isDirty = true
         )
         coEvery { repository.getEntriesByIds(listOf("conflict1")) } returns listOf(dirtyEntity)

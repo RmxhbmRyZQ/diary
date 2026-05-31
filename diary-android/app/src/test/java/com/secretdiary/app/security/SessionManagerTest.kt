@@ -104,14 +104,14 @@ class SessionManagerTest {
     @Test
     fun `getActiveDEK returns null after TTL expiration`() {
         sessionManager.onLoginSuccess("testuser", "w", "s", "saltAuthB64", testDEK)
-        val pastTime = System.currentTimeMillis() - (31 * 60 * 1000L)
+        val pastTime = System.currentTimeMillis() - (4 * 24 * 60 * 60 * 1000L) // 4 天前，超过 3 天 TTL
         prefsMap["dek_stored_at"] = pastTime
         assertNull(sessionManager.getActiveDEK())
     }
 
     @Test
     fun `getActiveDEK returns DEK within TTL`() {
-        val recentTime = System.currentTimeMillis() - (10 * 60 * 1000L)
+        val recentTime = System.currentTimeMillis() - (2 * 24 * 60 * 60 * 1000L) // 2 天前，仍在 3 天 TTL 内
         sessionManager.onLoginSuccess("testuser", "w", "s", "saltAuthB64", testDEK)
         prefsMap["dek_stored_at"] = recentTime
         assertNotNull(sessionManager.getActiveDEK())
@@ -120,7 +120,7 @@ class SessionManagerTest {
     @Test
     fun `loadWrappedDEK returns null after TTL`() {
         sessionManager.onLoginSuccess("testuser", "w", "s", "saltAuthB64", testDEK)
-        val pastTime = System.currentTimeMillis() - (31 * 60 * 1000L)
+        val pastTime = System.currentTimeMillis() - (4 * 24 * 60 * 60 * 1000L) // 4 天前，超过 3 天 TTL
         prefsMap["dek_stored_at"] = pastTime
         assertNull(sessionManager.loadWrappedDEK())
     }

@@ -5,6 +5,8 @@ import android.text.method.LinkMovementMethod
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -57,7 +59,7 @@ fun DiaryDetailScreen(
         val diary = uiState.diary
         if (uiState.isLoading) LoadingIndicator(Modifier.padding(padding))
         else if (diary != null) {
-            Column(modifier = Modifier.padding(padding).padding(16.dp)) {
+            Column(modifier = Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
                 WarmCard {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(diary.title.ifEmpty { diary.diaryDate }, style = MaterialTheme.typography.headlineLarge)
@@ -116,56 +118,80 @@ fun DiaryDetailScreen(
     }
 }
 
+/**
+ * 按原始顺序渲染 Markdown：文本段用 Markwon 渲染，图片段用 Coil AsyncImage + AttachmentFetcher 解密显示。
+ */
 @Composable
 fun MarkdownContent(markdown: String, context: Context) {
     val imageLoader = remember { coil.Coil.imageLoader(context.applicationContext) }
-    val attachmentIds = remember(markdown) {
-        val ids = mutableListOf<String>()
-        val regex = Regex("!\\[[^\\]]*\\]\\(attachment:([^)]+)\\)")
-        regex.findAll(markdown).forEach { ids.add(it.groupValues[1]) }
-        ids
+    val markwon = remember {
+        Markwon.builder(context.applicationContext)
+            .usePlugin(io.noties.markwon.image.coil.CoilImagesPlugin.create(context.applicationContext))
+            .build()
     }
-    val textOnly = remember(markdown) {
-        markdown.replace(Regex("!\\[[^\\]]*\\]\\(attachment:[^)]+\\)\n?"), "")
+
+    val segments = remember(markdown) {
+        val result = mutableListOf<MarkdownSegment>()
+        val regex = Regex("!\\[[^\\]]*\\]\\(attachment:([^)]+)\\)")
+        var lastIndex = 0
+        regex.findAll(markdown).forEach { match ->
+            val textBefore = markdown.substring(lastIndex, match.range.first)
+            if (textBefore.isNotEmpty()) {
+                result.add(MarkdownSegment.Text(textBefore))
+            }
+            result.add(MarkdownSegment.Image(match.groupValues[1]))
+            lastIndex = match.range.last + 1
+        }
+        val remaining = markdown.substring(lastIndex)
+        if (remaining.isNotEmpty()) {
+            result.add(MarkdownSegment.Text(remaining))
+        }
+        if (result.isEmpty()) {
+            result.add(MarkdownSegment.Text(markdown))
+        }
+        result.toList()
     }
 
     Column {
-        AndroidView(
-            factory = { ctx ->
-                val markwon = Markwon.builder(ctx)
-                    .usePlugin(io.noties.markwon.image.coil.CoilImagesPlugin.create(ctx))
-                    .build()
-                val textView = TextView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    movementMethod = LinkMovementMethod.getInstance()
-                    textSize = 16f
-                }
-                markwon.setMarkdown(textView, textOnly)
-                textView
-            },
-            update = { textView ->
-                val markwon = Markwon.builder(context)
-                    .usePlugin(io.noties.markwon.image.coil.CoilImagesPlugin.create(context))
-                    .build()
-                markwon.setMarkdown(textView, textOnly)
-            }
-        )
-        if (attachmentIds.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                attachmentIds.forEach { attId ->
-                    AsyncImage(
-                        model = android.net.Uri.parse("attachment:$attId"),
-                        contentDescription = null,
-                        imageLoader = imageLoader,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
-                        contentScale = ContentScale.Fit
-                    )
+        for (i in segments.indices) {
+            key("seg$i") {
+                when (val segment = segments[i]) {
+                    is MarkdownSegment.Text -> {
+                        val textContent = segment.content
+                        AndroidView(
+                            factory = { ctx ->
+                                TextView(ctx).apply {
+                                    layoutParams = ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT
+                                    )
+                                    movementMethod = LinkMovementMethod.getInstance()
+                                    textSize = 16f
+                                }.also { markwon.setMarkdown(it, textContent) }
+                            },
+                            update = { markwon.setMarkdown(it, textContent) }
+                        )
+                    }
+                    is MarkdownSegment.Image -> {
+                        AsyncImage(
+                            model = android.net.Uri.parse("attachment:${segment.attachmentId}"),
+                            contentDescription = null,
+                            imageLoader = imageLoader,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 100.dp, max = 400.dp)
+                                .padding(vertical = 4.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** Markdown 解析出的有序片段 */
+private sealed class MarkdownSegment {
+    data class Text(val content: String) : MarkdownSegment()
+    data class Image(val attachmentId: String) : MarkdownSegment()
 }

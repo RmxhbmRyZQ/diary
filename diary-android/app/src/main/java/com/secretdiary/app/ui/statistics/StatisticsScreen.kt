@@ -24,19 +24,23 @@ private val WeatherLabels = mapOf(
     "snowy" to "雪", "windy" to "风", "foggy" to "雾", "stormy" to "暴风雨"
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(viewModel: StatisticsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     if (uiState.isLoading) { LoadingIndicator(); return }
 
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("统计") }) }
+    ) { padding ->
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(padding)
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text("统计", style = MaterialTheme.typography.headlineLarge)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // 总览卡片
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -117,6 +121,7 @@ fun StatisticsScreen(viewModel: StatisticsViewModel = hiltViewModel()) {
                 HeatmapGrid(uiState.heatmapData)
             }
         }
+    }
     }
 }
 

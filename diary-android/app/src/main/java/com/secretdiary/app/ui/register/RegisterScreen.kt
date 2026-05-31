@@ -17,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.secretdiary.app.ui.components.WarmButton
 import com.secretdiary.app.ui.components.WarmCard
+import com.secretdiary.app.ui.components.WarmProgressBar
 import com.secretdiary.app.ui.navigation.Routes
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,6 +59,7 @@ fun RegisterScreen(
             )
             Spacer(modifier = Modifier.height(20.dp))
             WarmButton(if (uiState.isLoading) "注册中..." else "注册", onClick = viewModel::register, enabled = !uiState.isLoading)
+            if (uiState.isLoading) { Spacer(modifier = Modifier.height(12.dp)); WarmProgressBar() }
         }
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = { navController.popBackStack() }) { Text("已有账户？登录") }

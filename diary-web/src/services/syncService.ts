@@ -1,16 +1,17 @@
 import axios from 'axios';
 import { syncEntries, batchGetEntries, type SyncEntry } from '../api/entries';
-import { decryptPayload } from '../crypto/cryptoService';
 import { toBeijingISOString } from '../utils/timeUtils';
 import {
   getAllEntries,
   putEntry,
   deleteEntriesNotIn,
-  buildEntryFromDecrypted,
-  type CachedEntry,
+  buildEncryptedEntry,
+  type EncryptedCachedEntry,
 } from '../db/entries';
 
-const LAST_SYNC_KEY = 'lastSyncTime';
+function syncKey(username: string): string {
+  return `lastSyncTime:${username}`;
+}
 
 export interface SyncResult {
   added: number;
@@ -25,17 +26,17 @@ export class SyncError extends Error {
   }
 }
 
-function getLastSyncTime(): string | undefined {
-  const v = localStorage.getItem(LAST_SYNC_KEY);
+function getLastSyncTime(username: string): string | undefined {
+  const v = localStorage.getItem(syncKey(username));
   return v || undefined;
 }
 
-function saveLastSyncTime() {
-  localStorage.setItem(LAST_SYNC_KEY, toBeijingISOString());
+function saveLastSyncTime(username: string) {
+  localStorage.setItem(syncKey(username), toBeijingISOString());
 }
 
-export async function fullSync(dek: CryptoKey, since?: string): Promise<SyncResult> {
-  const effectiveSince = since ?? getLastSyncTime();
+export async function fullSync(username: string, since?: string): Promise<SyncResult> {
+  const effectiveSince = since ?? getLastSyncTime(username);
 
   let response;
   try {
@@ -87,31 +88,27 @@ export async function fullSync(dek: CryptoKey, since?: string): Promise<SyncResu
       const details = batchResponse.data.entries;
 
       for (const detail of details) {
-        try {
-          const decrypted = await decryptPayload(detail.encryptedPayload, detail.iv, dek);
-          const cached = buildEntryFromDecrypted(
-            detail.id,
-            detail.diaryDate,
-            detail.mood,
-            detail.weather,
-            detail.favorite,
-            detail.version,
-            detail.updatedAt,
-            decrypted as { title: string; content: string; tags: string[]; attachmentIds: string[] },
-          );
-          await putEntry(cached);
-        } catch {
-          // skip entries we can't decrypt
-        }
+        const cached = buildEncryptedEntry(
+          detail.id,
+          detail.diaryDate,
+          detail.mood,
+          detail.weather,
+          detail.favorite,
+          detail.version,
+          detail.updatedAt,
+          detail.encryptedPayload,
+          detail.iv,
+        );
+        await putEntry(cached);
       }
     }
   }
 
-  saveLastSyncTime();
+  saveLastSyncTime(username);
   return { added, updated, removed };
 }
 
-export function getSyncSummary(entries: CachedEntry[]): SyncEntry[] {
+export function getSyncSummary(entries: EncryptedCachedEntry[]): SyncEntry[] {
   return entries.map((e) => ({
     id: e.diaryId,
     diaryDate: e.diaryDate,

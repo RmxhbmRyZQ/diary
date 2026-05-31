@@ -6,8 +6,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +60,38 @@ fun WarmButton(
         )
     ) {
         Text(text, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** 无进度的滑块式进度条，用于 PBKDF2 等耗时计算期间展示 */
+@Composable
+fun WarmProgressBar(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "progress")
+    val offset by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "offset"
+    )
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(primary.copy(alpha = 0.15f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.4f)
+                .fillMaxHeight()
+                .offset(x = (offset * 300).dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(primary)
+        )
     }
 }
 

@@ -120,25 +120,39 @@ class AuthInterceptor(
                     errorHandler.notifySessionExpired()
                 }
             }
-            409 -> { errorHandler.notifyConflict(null, null) }
+            409 -> {
+                val (version, updatedAt) = extractConflictInfo(response)
+                errorHandler.notifyConflict(version, updatedAt)
+            }
             429 -> {
                 val retryAfter = response.header("Retry-After")?.toIntOrNull() ?: 60
                 errorHandler.notifyRateLimit(retryAfter)
             }
             400 -> {
-                // 解析 JSON 响应体检测时间偏差，避免与参数校验 400 混淆
                 val body = response.peekBody(Long.MAX_VALUE).string()
                 val isTimeSkew = try {
                     val json = com.google.gson.JsonParser.parseString(body).asJsonObject
                     json.get("code")?.asInt == 400 &&
-                        (json.get("message")?.asString?.contains("时间偏差") == true ||
-                         json.get("message")?.asString?.contains("time") == true)
+                        json.get("message")?.asString?.contains("时间偏差过大") == true
                 } catch (_: Exception) {
-                    body.contains("时间偏差")
+                    false
                 }
                 if (isTimeSkew) errorHandler.notifyTimeSkew(body)
             }
         }
         return response
+    }
+
+    private fun extractConflictInfo(response: okhttp3.Response): Pair<Int?, String?> {
+        return try {
+            val copy = response.peekBody(Long.MAX_VALUE).string()
+            val json = com.google.gson.JsonParser.parseString(copy).asJsonObject
+            val data = json.getAsJsonObject("data")
+            val version = data?.get("version")?.asInt
+            val updatedAt = data?.get("updated_at")?.asString
+            Pair(version, updatedAt)
+        } catch (_: Exception) {
+            Pair(null, null)
+        }
     }
 }

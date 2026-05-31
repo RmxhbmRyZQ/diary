@@ -12,6 +12,7 @@ import com.secretdiary.app.data.local.dao.AttachmentIvDao
 import com.secretdiary.app.data.local.entity.AttachmentIvEntity
 import com.secretdiary.app.security.CryptoManager
 import com.secretdiary.app.util.AppConfig
+import com.secretdiary.app.util.Base64Util
 import com.secretdiary.app.security.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -59,7 +60,7 @@ class AttachmentFetcher(
 
         val dek = sessionManager.getActiveDEK() ?: throw Exception("DEK not available")
         val plaintext = cryptoManager.decrypt(
-            android.util.Base64.encodeToString(encryptedBytes, android.util.Base64.NO_WRAP),
+            Base64Util.encodeToString(encryptedBytes),
             ivEntity.ivB64, dek
         )
 

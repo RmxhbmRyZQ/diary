@@ -54,11 +54,11 @@ interface ApiService {
     suspend fun recoveryReset(@Body request: RecoveryResetRequest): Response<ApiResponse<Any>>
 
     /** 删除托管信息 */
-    @DELETE("auth/recovery")
+    @HTTP(method = "DELETE", path = "auth/recovery", hasBody = true)
     suspend fun deleteRecovery(@Body request: DeleteRecoveryRequest): Response<ApiResponse<Any>>
 
     /** 注销账户 */
-    @DELETE("auth/account")
+    @HTTP(method = "DELETE", path = "auth/account", hasBody = true)
     suspend fun deleteAccount(@Body request: DeleteAccountRequest): Response<ApiResponse<Any>>
 
     // ==================== 日记 ====================

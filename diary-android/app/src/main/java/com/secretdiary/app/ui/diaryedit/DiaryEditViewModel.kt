@@ -13,6 +13,7 @@ import com.secretdiary.app.security.CryptoManager
 import com.secretdiary.app.security.SessionManager
 import com.secretdiary.app.sync.SyncManager
 import com.secretdiary.app.sync.SyncState
+import com.secretdiary.app.util.Base64Util
 import com.secretdiary.app.util.NetworkMonitor
 import com.secretdiary.app.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,7 +42,7 @@ data class DiaryEditUiState(
     val tags: String = "",
     val attachmentIds: List<String> = emptyList(),
     val removedAttachmentIds: List<String> = emptyList(),
-    val pendingImages: List<Uri> = emptyList(),
+    val pendingImages: List<Pair<String, Uri>> = emptyList(), // (tempId, uri)
     val existingEntryId: String? = null,
     val serverVersion: Int? = null,
     val isLoading: Boolean = false,
@@ -86,10 +87,8 @@ class DiaryEditViewModel @Inject constructor(
         )
         viewModelScope.launch {
             var existing = repository.getByDiaryDate(diaryDate)
-            // 本地没找到且在线 → 触发一次同步从服务端拉取
             if (existing == null && networkMonitor.isOnline.value) {
                 syncManager.performSync()
-                // 等待同步完成
                 syncManager.syncState.first { it is SyncState.Success || it is SyncState.Failed }
                 existing = repository.getByDiaryDate(diaryDate)
             }
@@ -116,28 +115,56 @@ class DiaryEditViewModel @Inject constructor(
     fun togglePreview() { _uiState.value = _uiState.value.copy(isPreviewing = !_uiState.value.isPreviewing) }
     fun clearError() { _uiState.value = _uiState.value.copy(error = null) }
 
-    fun addImage(uri: Uri) {
+    /**
+     * 添加图片：生成临时 ID，立即在光标处（或末尾）插入占位文本，对齐 Web 端行为。
+     */
+    fun addImage(uri: Uri, cursorPosition: Int = -1) {
         if (!_uiState.value.isOnline) {
             _uiState.value = _uiState.value.copy(error = "需联网后管理附件")
             return
         }
-        _uiState.value = _uiState.value.copy(
-            pendingImages = _uiState.value.pendingImages + uri
+        val tempId = "pending_${UUID.randomUUID().toString().take(8)}"
+        val state = _uiState.value
+        val placeholder = "\n![图片](attachment:$tempId)\n"
+
+        val newContent = if (cursorPosition >= 0 && cursorPosition <= state.content.length) {
+            state.content.substring(0, cursorPosition) + placeholder + state.content.substring(cursorPosition)
+        } else {
+            state.content + placeholder
+        }
+
+        _uiState.value = state.copy(
+            pendingImages = state.pendingImages + (tempId to uri),
+            content = newContent
         )
     }
 
+    /** 移除待上传的图片，同时清理内容中的占位文本 */
     fun removePendingImage(index: Int) {
-        val images = _uiState.value.pendingImages.toMutableList()
+        val state = _uiState.value
+        val images = state.pendingImages.toMutableList()
         if (index in images.indices) {
+            val (tempId, _) = images[index]
             images.removeAt(index)
-            _uiState.value = _uiState.value.copy(pendingImages = images)
+            val newContent = state.content.replace(
+                Regex("!\\[[^\\]]*\\]\\(attachment:$tempId\\)\\n?"), ""
+            )
+            _uiState.value = state.copy(pendingImages = images, content = newContent)
         }
     }
 
+    /**
+     * 移除已有附件：同时清理日记内容中对应的 Markdown 图片引用，对齐 Web 端行为。
+     */
     fun removeExistingAttachment(attachmentId: String) {
-        _uiState.value = _uiState.value.copy(
-            attachmentIds = _uiState.value.attachmentIds - attachmentId,
-            removedAttachmentIds = _uiState.value.removedAttachmentIds + attachmentId
+        val state = _uiState.value
+        val newContent = state.content.replace(
+            Regex("!\\[[^\\]]*\\]\\(attachment:$attachmentId\\)\\n?"), ""
+        )
+        _uiState.value = state.copy(
+            attachmentIds = state.attachmentIds - attachmentId,
+            removedAttachmentIds = state.removedAttachmentIds + attachmentId,
+            content = newContent
         )
     }
 
@@ -149,15 +176,12 @@ class DiaryEditViewModel @Inject constructor(
             val originalBytes = inputStream.readBytes()
             inputStream.close()
 
-            // 图片压缩
             val compressed = compressImage(originalBytes)
 
-            // 加密
             val (ctB64, ivB64) = cryptoManager.encrypt(compressed, dek)
-            val encryptedBytes = android.util.Base64.decode(ctB64, android.util.Base64.NO_WRAP)
+            val encryptedBytes = Base64Util.decode(ctB64)
             val sha256 = cryptoManager.sha256Hex(encryptedBytes)
 
-            // 上传（密文）
             val fileBody = encryptedBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
             val filePart = MultipartBody.Part.createFormData("file", "encrypted_img", fileBody)
             val diaryIdBody = "00000000-0000-0000-0000-000000000000"
@@ -179,12 +203,10 @@ class DiaryEditViewModel @Inject constructor(
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         val isPng = options.outMimeType == "image/png"
 
-        // GIF / 动图跳过压缩
         if (options.outMimeType == "image/gif") return bytes
 
         var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
 
-        // 最大宽高 1920
         val maxSize = 1920
         val origW = bitmap.width
         val origH = bitmap.height
@@ -200,7 +222,6 @@ class DiaryEditViewModel @Inject constructor(
         var quality = if (isPng) 100 else 80
         bitmap.compress(format, quality, outputStream)
 
-        // 若压缩后仍 > 5MB，降质到 0.5
         if (outputStream.size() > 5 * 1024 * 1024 && !isPng) {
             outputStream.reset()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
@@ -215,42 +236,45 @@ class DiaryEditViewModel @Inject constructor(
             try {
                 val state = _uiState.value
 
-                // 1. 删除已移除的附件（从服务端及本地 IV 表）
+                // 1. 删除已移除的附件（从服务端）
                 for (attId in state.removedAttachmentIds) {
                     try { apiService.deleteAttachment(attId) } catch (_: Exception) {}
                 }
 
-                // 2. 上传新图片
+                // 2. 上传新图片，建立 tempId → realId 映射
+                val tempToRealMap = mutableMapOf<String, String>()
                 val newAttachmentIds = mutableListOf<String>()
-                for (uri in state.pendingImages) {
+
+                for ((tempId, uri) in state.pendingImages) {
                     val attId = uploadImage(uri)
                     if (attId != null) {
                         newAttachmentIds.add(attId)
-                        val placeholder = "\n![图片](attachment:$attId)\n"
-                        _uiState.value = _uiState.value.copy(
-                            content = _uiState.value.content + placeholder
-                        )
+                        tempToRealMap[tempId] = attId
                     }
                 }
 
+                // 3. 将内容中的临时 ID 替换为真实 ID，对齐 Web 端行为
+                var finalContent = _uiState.value.content
+                for ((tempId, realId) in tempToRealMap) {
+                    finalContent = finalContent.replace("attachment:$tempId", "attachment:$realId")
+                }
+                _uiState.value = _uiState.value.copy(content = finalContent)
+
                 val tags = state.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                 val id = state.existingEntryId ?: UUID.randomUUID().toString()
-
-                // 合并保留的附件 ID 和新上传的附件 ID
                 val allAttachmentIds = state.attachmentIds + newAttachmentIds
 
                 val result = if (state.existingEntryId != null) {
                     repository.updateDiary(
                         id = id, diaryDate = state.diaryDate, title = state.title,
-                        content = _uiState.value.content, tags = tags, mood = state.mood,
+                        content = finalContent, tags = tags, mood = state.mood,
                         weather = state.weather, favorite = state.favorite,
-                        attachmentIds = allAttachmentIds,
-                        serverVersion = state.serverVersion
+                        attachmentIds = allAttachmentIds
                     )
                 } else {
                     repository.saveDiary(
                         id = id, diaryDate = state.diaryDate, title = state.title,
-                        content = _uiState.value.content, tags = tags, mood = state.mood,
+                        content = finalContent, tags = tags, mood = state.mood,
                         weather = state.weather, favorite = state.favorite,
                         attachmentIds = allAttachmentIds
                     )
@@ -259,7 +283,7 @@ class DiaryEditViewModel @Inject constructor(
                     onSuccess = { diary ->
                         _uiState.value = _uiState.value.copy(
                             isLoading = false, saved = true,
-                            existingEntryId = diary.id,  // 同步服务端 ID
+                            existingEntryId = diary.id,
                             serverVersion = diary.serverVersion
                         )
                     },

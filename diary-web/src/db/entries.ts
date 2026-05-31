@@ -1,4 +1,17 @@
 import { getDB } from './index';
+import { decryptPayload } from '../crypto/cryptoService';
+
+export interface EncryptedCachedEntry {
+  diaryId: string;
+  diaryDate: string;
+  encryptedPayload: string;
+  iv: string;
+  mood: string | null;
+  weather: string | null;
+  favorite: boolean;
+  serverUpdatedAt: string;
+  serverVersion: number;
+}
 
 export interface CachedEntry {
   diaryId: string;
@@ -20,22 +33,68 @@ function extractSummary(content: string, maxLen = 50): string {
   return plain.length > maxLen ? plain.substring(0, maxLen) + '...' : plain;
 }
 
-export async function getAllEntries(): Promise<CachedEntry[]> {
+export async function decryptCachedEntry(
+  encrypted: EncryptedCachedEntry,
+  dek: CryptoKey,
+): Promise<CachedEntry> {
+  const decrypted = await decryptPayload(encrypted.encryptedPayload, encrypted.iv, dek);
+  const payload = decrypted as { title: string; content: string; tags: string[]; attachmentIds: string[] };
+  return {
+    diaryId: encrypted.diaryId,
+    diaryDate: encrypted.diaryDate,
+    title: payload.title || '',
+    content: payload.content || '',
+    summary: extractSummary(payload.content || ''),
+    tags: payload.tags || [],
+    mood: encrypted.mood,
+    weather: encrypted.weather,
+    favorite: encrypted.favorite,
+    attachmentIds: payload.attachmentIds || [],
+    serverUpdatedAt: encrypted.serverUpdatedAt,
+    serverVersion: encrypted.serverVersion,
+  };
+}
+
+export function buildEncryptedEntry(
+  id: string,
+  diaryDate: string,
+  mood: string | null,
+  weather: string | null,
+  favorite: boolean,
+  version: number,
+  updatedAt: string,
+  encryptedPayload: string,
+  iv: string,
+): EncryptedCachedEntry {
+  return {
+    diaryId: id,
+    diaryDate,
+    encryptedPayload,
+    iv,
+    mood,
+    weather,
+    favorite,
+    serverUpdatedAt: updatedAt,
+    serverVersion: version,
+  };
+}
+
+export async function getAllEntries(): Promise<EncryptedCachedEntry[]> {
   const db = await getDB();
   return db.getAll('entries');
 }
 
-export async function getEntryById(diaryId: string): Promise<CachedEntry | undefined> {
+export async function getEntryById(diaryId: string): Promise<EncryptedCachedEntry | undefined> {
   const db = await getDB();
   return db.get('entries', diaryId);
 }
 
-export async function putEntry(entry: CachedEntry): Promise<void> {
+export async function putEntry(entry: EncryptedCachedEntry): Promise<void> {
   const db = await getDB();
   await db.put('entries', entry);
 }
 
-export async function putEntries(entries: CachedEntry[]): Promise<void> {
+export async function putEntries(entries: EncryptedCachedEntry[]): Promise<void> {
   const db = await getDB();
   const tx = db.transaction('entries', 'readwrite');
   for (const entry of entries) {
@@ -61,18 +120,18 @@ export async function deleteEntriesNotIn(ids: Set<string>): Promise<void> {
   await tx.done;
 }
 
-export async function getEntriesByDateRange(start: string, end: string): Promise<CachedEntry[]> {
+export async function getEntriesByDateRange(start: string, end: string): Promise<EncryptedCachedEntry[]> {
   const db = await getDB();
   const all = await db.getAll('entries');
   return all.filter((e) => e.diaryDate >= start && e.diaryDate <= end);
 }
 
-export async function getFavoriteEntries(): Promise<CachedEntry[]> {
+export async function getFavoriteEntries(): Promise<EncryptedCachedEntry[]> {
   const db = await getDB();
   return db.getAllFromIndex('entries', 'favorite', 1);
 }
 
-export async function getEntryByDiaryDate(diaryDate: string): Promise<CachedEntry | undefined> {
+export async function getEntryByDiaryDate(diaryDate: string): Promise<EncryptedCachedEntry | undefined> {
   const db = await getDB();
   return db.getFromIndex('entries', 'diaryDate', diaryDate);
 }
@@ -80,30 +139,4 @@ export async function getEntryByDiaryDate(diaryDate: string): Promise<CachedEntr
 export async function clearAllEntries(): Promise<void> {
   const db = await getDB();
   await db.clear('entries');
-}
-
-export function buildEntryFromDecrypted(
-  id: string,
-  diaryDate: string,
-  mood: string | null,
-  weather: string | null,
-  favorite: boolean,
-  version: number,
-  updatedAt: string,
-  decryptedPayload: { title: string; content: string; tags: string[]; attachmentIds: string[] },
-): CachedEntry {
-  return {
-    diaryId: id,
-    diaryDate,
-    title: decryptedPayload.title || '',
-    content: decryptedPayload.content || '',
-    summary: extractSummary(decryptedPayload.content || ''),
-    tags: decryptedPayload.tags || [],
-    mood,
-    weather,
-    favorite,
-    attachmentIds: decryptedPayload.attachmentIds || [],
-    serverUpdatedAt: updatedAt,
-    serverVersion: version,
-  };
 }

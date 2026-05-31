@@ -59,11 +59,11 @@ export default function RecoveryPage() {
       setChallengeIv(data.challenge_iv || '');
       setStep('recovery-phrase');
     } catch (err: unknown) {
-      const e = err as { code?: number };
+      const e = err as { code?: number; message?: string };
       if (e.code === 404) {
         setError('用户不存在');
       } else {
-        setError('获取恢复信息失败，请稍后重试');
+        setError(e.message || '获取恢复信息失败，请稍后重试');
       }
     } finally {
       setLoading(false);
@@ -162,12 +162,12 @@ export default function RecoveryPage() {
 
       navigate('/login', { replace: true, state: { recovered: true } });
     } catch (err: unknown) {
-      const e = err as { code?: number };
+      const e = err as { code?: number; message?: string };
       if (e.code === 401) {
         setError('恢复令牌已过期（5 分钟有效），请重新开始');
         setStep('username');
       } else {
-        setError('重置失败，请重试');
+        setError(e.message || '重置失败，请重试');
       }
     } finally {
       setLoading(false);

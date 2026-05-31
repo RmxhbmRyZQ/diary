@@ -8,8 +8,10 @@ import com.secretdiary.app.data.remote.api.ApiService
 import com.secretdiary.app.data.remote.dto.*
 import com.secretdiary.app.data.repository.DiaryRepository
 import com.secretdiary.app.security.CryptoManager
+import com.secretdiary.app.security.SaltPreferencesManager
 import com.secretdiary.app.security.SessionManager
 import com.secretdiary.app.sync.SyncManager
+import com.secretdiary.app.util.Base64Util
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -23,6 +25,7 @@ import java.io.File
 import javax.inject.Inject
 
 data class SettingsUiState(
+    val username: String = "",
     val hasRecovery: Boolean = false,
     val lastSyncTime: String? = null,
     val isBiometricEnabled: Boolean = false,
@@ -40,13 +43,13 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val repository: DiaryRepository,
     private val database: SecretDiaryDatabase,
-    @ApplicationContext private val context: Context
+    private val saltPrefs: SaltPreferencesManager,
+    @ApplicationContext private val context: Context  // 仅用于 cacheDir/filesDir 清理
 ) : ViewModel() {
-
-    private val saltPrefs = context.getSharedPreferences("diary_salts", Context.MODE_PRIVATE)
     private var syncObserverJob: Job? = null
 
     private val _uiState = MutableStateFlow(SettingsUiState(
+        username = sessionManager.getUsername() ?: "",
         hasRecovery = sessionManager.hasRecovery(),
         isBiometricEnabled = sessionManager.isBiometricEnabled()
     ))
@@ -79,20 +82,23 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                // 对齐 Web 端：使用统一的盐（saltAuth == saltEnc）
                 val unifiedSaltB64 = sessionManager.getSaltAuthB64()
                     ?: throw IllegalStateException("Salt not found — please re-login")
-                val unifiedSalt = android.util.Base64.decode(unifiedSaltB64, android.util.Base64.NO_WRAP)
-
+                val unifiedSalt = Base64Util.decode(unifiedSaltB64)
                 val iters = apiService.getConfig().body()?.data?.kdf?.iterations ?: 600_000
-                val oldAuthKey = cryptoManager.deriveAuthKey(oldPassword, unifiedSalt, iters)
 
-                // 生成一个新的统一盐，同时用于 authKey 和 KEK（与 Web 端一致）
+                // PBKDF2 在 Default 线程执行
+                val oldAuthKey = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveAuthKey(oldPassword, unifiedSalt, iters)
+                }
                 val newSalt = cryptoManager.generateSalt()
-                val newSaltB64 = android.util.Base64.encodeToString(newSalt, android.util.Base64.NO_WRAP)
-                val newKek = cryptoManager.deriveKEK(newPassword, newSalt, iters)
-                val newAuthKey = cryptoManager.deriveAuthKey(newPassword, newSalt, iters)
-
+                val newSaltB64 = Base64Util.encodeToString(newSalt)
+                val newKek = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveKEK(newPassword, newSalt, iters)
+                }
+                val newAuthKey = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveAuthKey(newPassword, newSalt, iters)
+                }
                 val dek = sessionManager.getActiveDEK()
                     ?: throw IllegalStateException("DEK not available")
                 val newEncryptedDek = cryptoManager.wrapKey(dek, newKek)
@@ -106,10 +112,8 @@ class SettingsViewModel @Inject constructor(
                 ))
                 // 更新本地存储的统一盐
                 val username = sessionManager.getUsername() ?: ""
-                saltPrefs.edit()
-                    .putString("saltAuth_$username", newSaltB64)
-                    .putString("saltEnc_$username", newSaltB64)
-                    .apply()
+                saltPrefs.putSaltAuth(username, newSaltB64)
+                saltPrefs.putSaltEnc(username, newSaltB64)
                 try { apiService.logout() } catch (_: Exception) {}
                 sessionManager.clearAll()
                 _uiState.value = _uiState.value.copy(isLoading = false, message = "密码已修改，请重新登录")
@@ -130,7 +134,9 @@ class SettingsViewModel @Inject constructor(
                 val config = apiService.getConfig()
                 val iters = config.body()?.data?.kdf?.iterations ?: 600_000
                 val recoverySalt = cryptoManager.generateSalt()
-                val recoveryKek = cryptoManager.deriveKEK(recoveryPhrase, recoverySalt, iters)
+                val recoveryKek = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveKEK(recoveryPhrase, recoverySalt, iters)
+                }
                 val dek = sessionManager.getActiveDEK() ?: throw IllegalStateException("DEK not available")
                 val recoveryData = cryptoManager.wrapKey(dek, recoveryKek)
                 val challenge = cryptoManager.generateChallenge()
@@ -139,8 +145,8 @@ class SettingsViewModel @Inject constructor(
 
                 apiService.setRecovery(SetRecoveryRequest(
                     recoveryData = recoveryData,
-                    recoverySalt = android.util.Base64.encodeToString(recoverySalt, android.util.Base64.NO_WRAP),
-                    challenge = android.util.Base64.encodeToString(challenge, android.util.Base64.NO_WRAP),
+                    recoverySalt = Base64Util.encodeToString(recoverySalt),
+                    challenge = Base64Util.encodeToString(challenge),
                     encryptedChallenge = encryptedChallenge
                 ))
                 sessionManager.setHasRecovery(true)
@@ -157,11 +163,13 @@ class SettingsViewModel @Inject constructor(
             try {
                 val saltAuthB64 = sessionManager.getSaltAuthB64()
                     ?: throw IllegalStateException("SaltAuth not found — please re-login")
-                val saltAuth = android.util.Base64.decode(saltAuthB64, android.util.Base64.NO_WRAP)
+                val saltAuth = Base64Util.decode(saltAuthB64)
 
                 val config = apiService.getConfig()
                 val iters = config.body()?.data?.kdf?.iterations ?: 600_000
-                val authKey = cryptoManager.deriveAuthKey(password, saltAuth, iters)
+                val authKey = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveAuthKey(password, saltAuth, iters)
+                }
                 apiService.deleteRecovery(DeleteRecoveryRequest(authKey))
                 sessionManager.setHasRecovery(false)
                 _uiState.value = _uiState.value.copy(isLoading = false, hasRecovery = false, message = "托管已关闭")
@@ -177,11 +185,13 @@ class SettingsViewModel @Inject constructor(
             try {
                 val saltAuthB64 = sessionManager.getSaltAuthB64()
                     ?: throw IllegalStateException("SaltAuth not found — please re-login")
-                val saltAuth = android.util.Base64.decode(saltAuthB64, android.util.Base64.NO_WRAP)
+                val saltAuth = Base64Util.decode(saltAuthB64)
 
                 val config = apiService.getConfig()
                 val iters = config.body()?.data?.kdf?.iterations ?: 600_000
-                val authKey = cryptoManager.deriveAuthKey(password, saltAuth, iters)
+                val authKey = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveAuthKey(password, saltAuth, iters)
+                }
 
                 apiService.deleteAccount(DeleteAccountRequest(authKey))
 
@@ -195,7 +205,7 @@ class SettingsViewModel @Inject constructor(
                 if (filesDir.exists()) filesDir.deleteRecursively()
 
                 // 清除 salt 记录
-                saltPrefs.edit().clear().apply()
+                saltPrefs.clear()
 
                 sessionManager.clearAll()
                 _uiState.value = _uiState.value.copy(isLoading = false, message = "账户已注销")

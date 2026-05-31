@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -43,9 +44,17 @@ fun DiaryEditScreen(
     LaunchedEffect(diaryDate) { viewModel.loadDiary(diaryDate) }
     LaunchedEffect(uiState.saved) { if (uiState.saved) navController.popBackStack() }
 
+    // 本地 TextFieldValue 追踪光标位置，避免 ViewModel 依赖 Compose 类型
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(uiState.content)) }
+    LaunchedEffect(uiState.content) {
+        if (textFieldValue.text != uiState.content) {
+            textFieldValue = TextFieldValue(uiState.content)
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> uri?.let { viewModel.addImage(it) } }
+    ) { uri: Uri? -> uri?.let { viewModel.addImage(it, textFieldValue.selection.start) } }
 
     Scaffold(
         topBar = {
@@ -213,7 +222,7 @@ fun DiaryEditScreen(
                             }
                         }
                         // 待上传的图片
-                        itemsIndexed(uiState.pendingImages) { index, uri ->
+                        itemsIndexed(uiState.pendingImages) { index, (_, uri) ->
                             Surface(
                                 modifier = Modifier.size(72.dp),
                                 shape = MaterialTheme.shapes.small,
@@ -252,9 +261,17 @@ fun DiaryEditScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 内容 — 更大区域
-                OutlinedTextField(uiState.content, viewModel::onContentChanged, label = { Text("日记内容") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp), maxLines = Int.MAX_VALUE)
+                // 内容 — 更大区域（使用 TextFieldValue 追踪光标位置，供 addImage 使用）
+                OutlinedTextField(
+                    value = textFieldValue,
+                    onValueChange = { newValue ->
+                        textFieldValue = newValue
+                        viewModel.onContentChanged(newValue.text)
+                    },
+                    label = { Text("日记内容") },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp),
+                    maxLines = Int.MAX_VALUE
+                )
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }

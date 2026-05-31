@@ -47,7 +47,7 @@ fun DiaryListScreen(
                         Icon(
                             Icons.Default.FilterList,
                             contentDescription = "筛选",
-                            tint = if (uiState.filterMood != null || uiState.filterWeather != null || uiState.filterFavorites)
+                            tint = if (uiState.filterMood != null || uiState.filterWeather != null || uiState.filterFavorites || uiState.selectedYear != null)
                                 MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface
                         )
@@ -76,11 +76,56 @@ fun DiaryListScreen(
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     // 第一行：全部 + 收藏
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = uiState.filterMood == null && uiState.filterWeather == null && !uiState.filterFavorites, onClick = { viewModel.clearFilters() }, label = { Text("全部") })
+                        FilterChip(selected = uiState.filterMood == null && uiState.filterWeather == null && !uiState.filterFavorites && uiState.selectedYear == null, onClick = { viewModel.clearFilters() }, label = { Text("全部") })
                         FilterChip(selected = uiState.filterFavorites, onClick = { viewModel.setFilterFavorites(!uiState.filterFavorites) }, label = { Icon(Icons.Default.Star, "收藏", modifier = Modifier.size(18.dp)) })
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    // 第二行：心情（可左右滑动）
+                    // 日期级联筛选：年 → 月 → 日
+                    Text("日期", style = MaterialTheme.typography.labelSmall)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        uiState.availableYears.forEach { year ->
+                            FilterChip(
+                                selected = uiState.selectedYear == year,
+                                onClick = { viewModel.setFilterYear(year) },
+                                label = { Text("${year}年") }
+                            )
+                        }
+                    }
+                    if (uiState.selectedYear != null && uiState.availableMonths.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            uiState.availableMonths.forEach { month ->
+                                FilterChip(
+                                    selected = uiState.selectedMonth == month,
+                                    onClick = { viewModel.setFilterMonth(month) },
+                                    label = { Text("${month}月") }
+                                )
+                            }
+                        }
+                    }
+                    if (uiState.selectedMonth != null && uiState.availableDays.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            uiState.availableDays.forEach { day ->
+                                FilterChip(
+                                    selected = uiState.selectedDay == day,
+                                    onClick = { viewModel.setFilterDay(day) },
+                                    label = { Text("${day}日") }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // 心情（可左右滑动）
                     Text("心情", style = MaterialTheme.typography.labelSmall)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -91,7 +136,7 @@ fun DiaryListScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    // 第三行：天气（可左右滑动）
+                    // 天气（可左右滑动）
                     Text("天气", style = MaterialTheme.typography.labelSmall)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getAllEntries, type CachedEntry } from '../db/entries';
-import { fullSync, SyncError } from '../services/syncService';
+import { getAllEntries, decryptCachedEntry, type CachedEntry } from '../db/entries';
+import { fullSync } from '../services/syncService';
 import EntryCard from '../components/diary/EntryCard';
 import MoodPicker from '../components/diary/MoodPicker';
 import WeatherPicker from '../components/diary/WeatherPicker';
@@ -13,38 +13,44 @@ type FilterMode = 'all' | 'favorites';
 
 export default function DiaryListPage() {
   const navigate = useNavigate();
-  const { dek, logout, needsKdfUpgrade, dismissKdfUpgrade } = useAuth();
+  const { user, dek, logout, needsKdfUpgrade, dismissKdfUpgrade } = useAuth();
 
   const [entries, setEntries] = useState<CachedEntry[]>([]);
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [moodFilter, setMoodFilter] = useState<string | null>(null);
   const [weatherFilter, setWeatherFilter] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState('');
 
   useEffect(() => {
-    if (!dek) {
+    if (!dek || !user) {
       setSyncing(false);
       return;
     }
     (async () => {
       try {
-        await fullSync(dek);
-        const all = await getAllEntries();
-        all.sort((a, b) => b.diaryDate.localeCompare(a.diaryDate));
-        setEntries(all);
+        await fullSync(user.username);
       } catch (err) {
         const msg = err instanceof Error ? err.message : '同步失败，请检查网络连接';
         setSyncError(msg);
-        const cached = await getAllEntries();
-        cached.sort((a, b) => b.diaryDate.localeCompare(a.diaryDate));
-        setEntries(cached);
+      }
+      try {
+        const encrypted = await getAllEntries();
+        const results = await Promise.allSettled(encrypted.map((e) => decryptCachedEntry(e, dek)));
+        const all = results
+          .filter((r): r is PromiseFulfilledResult<CachedEntry> => r.status === 'fulfilled')
+          .map((r) => r.value);
+        all.sort((a, b) => b.diaryDate.localeCompare(a.diaryDate));
+        setEntries(all);
       } finally {
         setSyncing(false);
       }
     })();
-  }, [dek]);
+  }, [dek, user]);
 
   const filteredEntries = useMemo(() => {
     let result = entries;
@@ -61,6 +67,16 @@ export default function DiaryListPage() {
       result = result.filter((e) => e.weather === weatherFilter);
     }
 
+    if (selectedYear) {
+      result = result.filter((e) => e.diaryDate.startsWith(selectedYear));
+    }
+    if (selectedMonth) {
+      result = result.filter((e) => e.diaryDate.startsWith(selectedMonth));
+    }
+    if (selectedDay) {
+      result = result.filter((e) => e.diaryDate === selectedDay);
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -72,24 +88,74 @@ export default function DiaryListPage() {
     }
 
     return result;
-  }, [entries, filterMode, moodFilter, weatherFilter, searchQuery]);
+  }, [entries, filterMode, moodFilter, weatherFilter, selectedYear, selectedMonth, selectedDay, searchQuery]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set(entries.map((e) => e.diaryDate.substring(0, 4)));
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [entries]);
+
+  const availableMonths = useMemo(() => {
+    if (!selectedYear) return [];
+    const months = new Set(
+      entries
+        .filter((e) => e.diaryDate.startsWith(selectedYear))
+        .map((e) => e.diaryDate.substring(0, 7)),
+    );
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [entries, selectedYear]);
+
+  const availableDays = useMemo(() => {
+    if (!selectedMonth) return [];
+    const days = new Set(
+      entries
+        .filter((e) => e.diaryDate.startsWith(selectedMonth))
+        .map((e) => e.diaryDate),
+    );
+    return Array.from(days).sort((a, b) => b.localeCompare(a));
+  }, [entries, selectedMonth]);
 
   const groupedEntries = useMemo(() => {
     const groups = new Map<string, CachedEntry[]>();
+    const groupKey = selectedMonth ? 'day' : 'month';
     for (const entry of filteredEntries) {
-      const ym = entry.diaryDate.substring(0, 7);
-      if (!groups.has(ym)) groups.set(ym, []);
-      groups.get(ym)!.push(entry);
+      const key = groupKey === 'day'
+        ? entry.diaryDate
+        : entry.diaryDate.substring(0, 7);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(entry);
     }
     return groups;
-  }, [filteredEntries]);
+  }, [filteredEntries, selectedMonth]);
 
-  const formatYearMonth = (ym: string) => {
-    const [year, month] = ym.split('-');
+  const formatGroupLabel = (key: string) => {
+    if (selectedMonth) {
+      const d = new Date(key + 'T00:00:00');
+      const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      return `${parseInt(key.substring(8, 10))}日 ${weekdays[d.getDay()]}`;
+    }
+    const [year, month] = key.split('-');
     return `${year}年${parseInt(month)}月`;
   };
 
-  const hasFilters = filterMode === 'favorites' || moodFilter || weatherFilter || searchQuery.trim();
+  const formatMonthLabel = (ym: string) => {
+    return `${parseInt(ym.substring(5, 7))}月`;
+  };
+
+  const formatDayLabel = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    return `${parseInt(dateStr.substring(8, 10))} 周${weekdays[d.getDay()]}`;
+  };
+
+  const hasFilters = filterMode === 'favorites' || moodFilter || weatherFilter || searchQuery.trim()
+    || selectedYear || selectedMonth || selectedDay;
+
+  function clearTimeFilter() {
+    setSelectedYear(null);
+    setSelectedMonth(null);
+    setSelectedDay(null);
+  }
 
   return (
     <div className="min-h-screen bg-warm-50">
@@ -176,6 +242,76 @@ export default function DiaryListPage() {
             </button>
           </div>
 
+          {/* Time Filter — 年 → 月 → 日 */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-xs text-gray-400 mr-1">时间</span>
+              {availableYears.map((year) => (
+                <button
+                  key={year}
+                  onClick={() => {
+                    if (selectedYear === year) { clearTimeFilter(); return; }
+                    setSelectedYear(year);
+                    setSelectedMonth(null);
+                    setSelectedDay(null);
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    selectedYear === year
+                      ? 'bg-warm-500 text-white font-medium'
+                      : 'bg-white text-gray-700 hover:bg-warm-100'
+                  }`}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
+
+            {selectedYear && availableMonths.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-gray-400 mr-1">月</span>
+                {availableMonths.map((ym) => (
+                  <button
+                    key={ym}
+                    onClick={() => {
+                      if (selectedMonth === ym) { setSelectedMonth(null); setSelectedDay(null); return; }
+                      setSelectedMonth(ym);
+                      setSelectedDay(null);
+                    }}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      selectedMonth === ym
+                        ? 'bg-warm-400 text-white font-medium'
+                        : 'bg-gray-50 text-gray-700 hover:bg-warm-100'
+                    }`}
+                  >
+                    {formatMonthLabel(ym)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedMonth && availableDays.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-gray-400 mr-1">日</span>
+                {availableDays.map((day) => (
+                  <button
+                    key={day}
+                    onClick={() => {
+                      if (selectedDay === day) { setSelectedDay(null); return; }
+                      setSelectedDay(day);
+                    }}
+                    className={`px-2.5 py-1.5 text-sm rounded-lg transition-colors ${
+                      selectedDay === day
+                        ? 'bg-warm-300 text-white font-medium'
+                        : 'bg-gray-50 text-gray-600 hover:bg-warm-100'
+                    }`}
+                  >
+                    {formatDayLabel(day)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <MoodPicker value={moodFilter} onChange={setMoodFilter} />
             <WeatherPicker value={weatherFilter} onChange={setWeatherFilter} />
@@ -186,6 +322,7 @@ export default function DiaryListPage() {
                   setMoodFilter(null);
                   setWeatherFilter(null);
                   setSearchQuery('');
+                  clearTimeFilter();
                 }}
                 className="text-xs text-warm-600 hover:text-warm-700 px-2 py-1"
               >
@@ -215,14 +352,14 @@ export default function DiaryListPage() {
           </div>
         )}
 
-        {Array.from(groupedEntries.entries()).map(([ym, monthEntries]) => (
-          <div key={ym} className="mb-6">
+        {Array.from(groupedEntries.entries()).map(([key, groupEntries]) => (
+          <div key={key} className="mb-6">
             <h2 className="text-sm font-medium text-gray-400 mb-3 sticky top-0 bg-warm-50 py-1">
-              {formatYearMonth(ym)}
-              <span className="ml-2 text-xs text-gray-300">{monthEntries.length} 篇</span>
+              {formatGroupLabel(key)}
+              <span className="ml-2 text-xs text-gray-300">{groupEntries.length} 篇</span>
             </h2>
             <div className="space-y-3">
-              {monthEntries.map((entry) => (
+              {groupEntries.map((entry) => (
                 <EntryCard
                   key={entry.diaryId}
                   entry={entry}

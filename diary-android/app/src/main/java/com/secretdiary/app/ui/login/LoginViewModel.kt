@@ -1,16 +1,16 @@
 package com.secretdiary.app.ui.login
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.secretdiary.app.data.remote.api.ApiService
 import com.secretdiary.app.data.remote.dto.LoginRequest
 import com.secretdiary.app.security.BiometricAuth
 import com.secretdiary.app.security.CryptoManager
+import com.secretdiary.app.security.SaltPreferencesManager
 import com.secretdiary.app.security.SessionManager
 import com.secretdiary.app.sync.SyncManager
+import com.secretdiary.app.util.Base64Util
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,10 +36,8 @@ class LoginViewModel @Inject constructor(
     private val sessionManager: SessionManager,
     private val biometricAuth: BiometricAuth,
     private val syncManager: SyncManager,
-    @ApplicationContext private val context: Context
+    private val saltPrefs: SaltPreferencesManager
 ) : ViewModel() {
-
-    private val saltPrefs = context.getSharedPreferences("diary_salts", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(LoginUiState(
         isBiometricAvailable = biometricAuth.canAuthenticate()
@@ -76,10 +74,10 @@ class LoginViewModel @Inject constructor(
                 var saltEncB64: String? = saltDeferred.await()
 
                 if (saltEncB64.isNullOrEmpty()) {
-                    saltEncB64 = saltPrefs.getString("saltAuth_${state.username}", null)
+                    saltEncB64 = saltPrefs.getSaltAuth(state.username)
                 }
                 if (saltEncB64.isNullOrEmpty()) {
-                    saltEncB64 = saltPrefs.getString("saltEnc_${state.username}", null)
+                    saltEncB64 = saltPrefs.getSaltEnc(state.username)
                 }
 
                 if (saltEncB64.isNullOrEmpty()) {
@@ -88,7 +86,7 @@ class LoginViewModel @Inject constructor(
                     return@launch
                 }
 
-                val saltBytes = android.util.Base64.decode(saltEncB64, android.util.Base64.NO_WRAP)
+                val saltBytes = Base64Util.decode(saltEncB64)
                 val password = state.password
 
                 // PBKDF2 计算密集，在 Default 线程执行，避免阻塞 UI 动画
@@ -111,10 +109,8 @@ class LoginViewModel @Inject constructor(
                     cryptoManager.unwrapKey(data.encryptedDek, kek)
                 }
 
-                saltPrefs.edit()
-                    .putString("saltAuth_${state.username}", saltEncB64)
-                    .putString("saltEnc_${state.username}", saltEncB64)
-                    .apply()
+                saltPrefs.putSaltAuth(state.username, saltEncB64)
+                saltPrefs.putSaltEnc(state.username, saltEncB64)
 
                 sessionManager.onLoginSuccess(
                     username = state.username, wrappedDek = data.encryptedDek,

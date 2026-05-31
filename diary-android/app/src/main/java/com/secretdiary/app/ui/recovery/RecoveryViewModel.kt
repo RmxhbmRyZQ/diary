@@ -1,18 +1,20 @@
 package com.secretdiary.app.ui.recovery
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.secretdiary.app.data.remote.api.ApiService
 import com.secretdiary.app.data.remote.dto.KdfParams
 import com.secretdiary.app.data.remote.dto.RecoveryResetRequest
 import com.secretdiary.app.security.CryptoManager
+import com.secretdiary.app.security.SaltPreferencesManager
+import com.secretdiary.app.util.Base64Util
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class RecoveryUiState(
@@ -36,10 +38,8 @@ data class RecoveryUiState(
 class RecoveryViewModel @Inject constructor(
     private val apiService: ApiService,
     private val cryptoManager: CryptoManager,
-    @ApplicationContext private val context: Context
+    private val saltPrefs: SaltPreferencesManager
 ) : ViewModel() {
-
-    private val saltPrefs = context.getSharedPreferences("diary_salts", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(RecoveryUiState())
     val uiState: StateFlow<RecoveryUiState> = _uiState.asStateFlow()
@@ -88,8 +88,11 @@ class RecoveryViewModel @Inject constructor(
             try {
                 val config = apiService.getConfig()
                 val iterations = config.body()?.data?.kdf?.iterations ?: 600_000
-                val saltBytes = android.util.Base64.decode(state.recoverySalt, android.util.Base64.NO_WRAP)
-                val recoveryKek = cryptoManager.deriveKEK(state.recoveryPhrase, saltBytes, iterations)
+                val saltBytes = Base64Util.decode(state.recoverySalt)
+                // PBKDF2 在 Default 线程执行
+                val recoveryKek = withContext(Dispatchers.Default) {
+                    cryptoManager.deriveKEK(state.recoveryPhrase, saltBytes, iterations)
+                }
                 // 尝试解密 recoveryData 验证恢复口令正确性
                 cryptoManager.unwrapKey(state.recoveryData, recoveryKek)
                 _uiState.value = state.copy(isLoading = false, step = 3)
@@ -113,21 +116,22 @@ class RecoveryViewModel @Inject constructor(
             try {
                 val config = apiService.getConfig()
                 val iterations = config.body()?.data?.kdf?.iterations ?: 600_000
-                // 对齐 Web 端：使用统一的盐派生 authKey 和 KEK
+                // PBKDF2 在 Default 线程执行
                 val newSalt = cryptoManager.generateSalt()
-                val newSaltB64 = android.util.Base64.encodeToString(newSalt, android.util.Base64.NO_WRAP)
-                val newAuthKey = cryptoManager.deriveAuthKey(state.newPassword, newSalt, iterations)
-                val newKek = cryptoManager.deriveKEK(state.newPassword, newSalt, iterations)
-
-                // 用恢复口令解密 DEK
-                val recoverySaltBytes = android.util.Base64.decode(state.recoverySalt, android.util.Base64.NO_WRAP)
-                val recoveryKek = cryptoManager.deriveKEK(state.recoveryPhrase, recoverySaltBytes, iterations)
+                val newSaltB64 = Base64Util.encodeToString(newSalt)
+                val (newAuthKey, newKek, recoveryKek) = withContext(Dispatchers.Default) {
+                    val newAuthKey = cryptoManager.deriveAuthKey(state.newPassword, newSalt, iterations)
+                    val newKek = cryptoManager.deriveKEK(state.newPassword, newSalt, iterations)
+                    val recoverySaltBytes = Base64Util.decode(state.recoverySalt)
+                    val recoveryKek = cryptoManager.deriveKEK(state.recoveryPhrase, recoverySaltBytes, iterations)
+                    Triple(newAuthKey, newKek, recoveryKek)
+                }
                 val dek = cryptoManager.unwrapKey(state.recoveryData, recoveryKek)
                 val newEncryptedDek = cryptoManager.wrapKey(dek, newKek)
 
                 // 使用服务端返回的 challenge_iv 重新加密 challenge
-                val challengeBytes = android.util.Base64.decode(state.challenge, android.util.Base64.NO_WRAP)
-                val challengeIv = android.util.Base64.decode(state.challengeIv, android.util.Base64.NO_WRAP)
+                val challengeBytes = Base64Util.decode(state.challenge)
+                val challengeIv = Base64Util.decode(state.challengeIv)
                 val (ctB64, ivB64) = cryptoManager.encryptWithIV(challengeBytes, recoveryKek, challengeIv)
                 val encryptedChallenge = "$ctB64:$ivB64"
 
@@ -141,10 +145,8 @@ class RecoveryViewModel @Inject constructor(
                 ))
                 if (response.isSuccessful && response.body()?.code == 0) {
                     // 持久化统一盐，确保后续登录能正确派生密钥
-                    saltPrefs.edit()
-                        .putString("saltAuth_${state.username}", newSaltB64)
-                        .putString("saltEnc_${state.username}", newSaltB64)
-                        .apply()
+                    saltPrefs.putSaltAuth(state.username, newSaltB64)
+                    saltPrefs.putSaltEnc(state.username, newSaltB64)
                     _uiState.value = state.copy(isLoading = false, success = true)
                 } else {
                     _uiState.value = state.copy(isLoading = false, error = response.body()?.message ?: "重置失败")

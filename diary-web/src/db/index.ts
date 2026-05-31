@@ -1,14 +1,21 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'secretDiaryDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 export function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
+        // v1 → v2: entries store now holds encrypted payload; wipe old plaintext data
+        if (oldVersion < 2) {
+          if (db.objectStoreNames.contains('entries')) {
+            db.deleteObjectStore('entries');
+          }
+        }
+
         if (!db.objectStoreNames.contains('entries')) {
           const store = db.createObjectStore('entries', { keyPath: 'diaryId' });
           store.createIndex('diaryDate', 'diaryDate');

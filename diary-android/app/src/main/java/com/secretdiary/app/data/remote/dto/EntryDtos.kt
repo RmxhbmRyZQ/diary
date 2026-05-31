@@ -54,8 +54,7 @@ data class UpdateEntryRequest(
     val favorite: Boolean = false,
     val encryptedPayload: String,
     val iv: String,
-    val version: Int,
-    val attachmentIds: List<String>? = null
+    val version: Int
 )
 
 // ---------- 部分更新元数据 ----------

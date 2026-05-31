@@ -241,11 +241,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('无法获取用户加密参数');
       }
     } catch (err: unknown) {
-      const e = err as { code?: number };
+      const e = err as { code?: number; message?: string };
       if (e.code === 404) {
         throw new Error('用户名或密码错误');
       }
-      throw new Error('用户名或密码错误');
+      throw new Error(e.message || '用户名或密码错误');
     }
 
     const iterations = Number(kdfIterationsRef.current) || 600000;

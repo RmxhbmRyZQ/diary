@@ -1,18 +1,20 @@
 package com.secretdiary.app.ui.register
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.secretdiary.app.data.remote.api.ApiService
 import com.secretdiary.app.data.remote.dto.KdfParams
 import com.secretdiary.app.data.remote.dto.RegisterRequest
 import com.secretdiary.app.security.CryptoManager
+import com.secretdiary.app.security.SaltPreferencesManager
+import com.secretdiary.app.util.Base64Util
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class RegisterUiState(
@@ -28,10 +30,8 @@ data class RegisterUiState(
 class RegisterViewModel @Inject constructor(
     private val apiService: ApiService,
     private val cryptoManager: CryptoManager,
-    @ApplicationContext private val context: Context
+    private val saltPrefs: SaltPreferencesManager
 ) : ViewModel() {
-
-    private val saltPrefs = context.getSharedPreferences("diary_salts", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState: StateFlow<RegisterUiState> = _uiState.asStateFlow()
@@ -51,14 +51,15 @@ class RegisterViewModel @Inject constructor(
             try {
                 val config = apiService.getConfig()
                 val iterations = config.body()?.data?.kdf?.iterations ?: 600_000
-                // 使用同一个 salt 派生 authKey 和 KEK（与 Web 端对齐）
-                val salt = cryptoManager.generateSalt()
-                val authKey = cryptoManager.deriveAuthKey(state.password, salt, iterations)
-                val kek = cryptoManager.deriveKEK(state.password, salt, iterations)
-                val dek = cryptoManager.generateDEK()
-                val encryptedDek = cryptoManager.wrapKey(dek, kek)
-
-                val saltB64 = android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP)
+                // PBKDF2 计算密集，在 Default 线程执行，避免阻塞 UI 动画
+                val (saltB64, authKey, encryptedDek) = withContext(Dispatchers.Default) {
+                    val salt = cryptoManager.generateSalt()
+                    val authKey = cryptoManager.deriveAuthKey(state.password, salt, iterations)
+                    val kek = cryptoManager.deriveKEK(state.password, salt, iterations)
+                    val dek = cryptoManager.generateDEK()
+                    val encryptedDek = cryptoManager.wrapKey(dek, kek)
+                    Triple(Base64Util.encodeToString(salt), authKey, encryptedDek)
+                }
                 val response = apiService.register(RegisterRequest(
                     username = state.username,
                     authKey = authKey,
@@ -69,10 +70,8 @@ class RegisterViewModel @Inject constructor(
                 ))
                 if (response.isSuccessful && response.body()?.code == 0) {
                     // 持久化 salt 值，供登录及后续二次验证使用
-                    saltPrefs.edit()
-                        .putString("saltAuth_${state.username}", saltB64)
-                        .putString("saltEnc_${state.username}", saltB64)
-                        .apply()
+                    saltPrefs.putSaltAuth(state.username, saltB64)
+                    saltPrefs.putSaltEnc(state.username, saltB64)
                     _uiState.value = _uiState.value.copy(isLoading = false, registerSuccess = true)
                 } else {
                     _uiState.value = _uiState.value.copy(isLoading = false, error = response.body()?.message ?: "注册失败")

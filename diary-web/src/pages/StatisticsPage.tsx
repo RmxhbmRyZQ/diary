@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllEntries, type CachedEntry } from '../db/entries';
+import { getAllEntries, decryptCachedEntry, type CachedEntry } from '../db/entries';
+import { useAuth } from '../context/AuthContext';
 import { getMoodLabel } from '../utils/constants';
 import { toBeijingISOString } from '../utils/timeUtils';
 import { ArrowLeft } from 'lucide-react';
@@ -12,16 +13,19 @@ interface HeatmapDay {
 
 export default function StatisticsPage() {
   const navigate = useNavigate();
+  const { dek } = useAuth();
   const [entries, setEntries] = useState<CachedEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!dek) return;
     (async () => {
-      const all = await getAllEntries();
+      const encrypted = await getAllEntries();
+      const all = await Promise.all(encrypted.map((e) => decryptCachedEntry(e, dek)));
       setEntries(all);
       setLoading(false);
     })();
-  }, []);
+  }, [dek]);
 
   const stats = useMemo(() => {
     const totalEntries = entries.length;

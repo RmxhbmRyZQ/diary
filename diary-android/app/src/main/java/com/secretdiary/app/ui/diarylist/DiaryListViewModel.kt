@@ -22,7 +22,14 @@ data class DiaryListUiState(
     val filterMood: String? = null,
     val filterWeather: String? = null,
     val filterFavorites: Boolean = false,
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    // 日期级联筛选
+    val selectedYear: Int? = null,
+    val selectedMonth: Int? = null,
+    val selectedDay: Int? = null,
+    val availableYears: List<Int> = emptyList(),
+    val availableMonths: List<Int> = emptyList(),
+    val availableDays: List<Int> = emptyList()
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -35,20 +42,42 @@ class DiaryListViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DiaryListUiState())
     val uiState: StateFlow<DiaryListUiState> = _uiState.asStateFlow()
     private var observeJob: Job? = null
+    private val filterTrigger = MutableStateFlow(0)  // 日期筛选变化时递增，强制重新计算
 
     init {
         observeDiaries(repository.observeAllDiaries())
         observeSyncState()
-        // 同步由 LoginViewModel 或手动刷新触发，避免重复调用
     }
 
     private fun observeDiaries(flow: Flow<List<Diary>>) {
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
-            flow.collect { diaries ->
-                _uiState.value = _uiState.value.copy(diaries = diaries, isLoading = false)
-            }
+            flow.combine(filterTrigger) { base, _ -> base }
+                .collect { base ->
+                    val state = _uiState.value
+                    val filtered = applyFilters(base, state)
+                    val years = base.map { it.diaryDate.take(4).toIntOrNull() }.filterNotNull().distinct().sortedDescending()
+                    val months = if (state.selectedYear != null)
+                        base.filter { it.diaryDate.startsWith("${state.selectedYear}-") }
+                            .map { it.diaryDate.substring(5, 7).toIntOrNull() }.filterNotNull().distinct().sortedDescending()
+                    else emptyList()
+                    val days = if (state.selectedYear != null && state.selectedMonth != null)
+                        base.filter { it.diaryDate.startsWith("${state.selectedYear}-${state.selectedMonth.toString().padStart(2, '0')}-") }
+                            .map { it.diaryDate.takeLast(2).toIntOrNull() }.filterNotNull().distinct().sortedDescending()
+                    else emptyList()
+                    _uiState.value = state.copy(
+                        diaries = filtered,
+                        isLoading = false,
+                        availableYears = years,
+                        availableMonths = months,
+                        availableDays = days
+                    )
+                }
         }
+    }
+
+    private fun triggerRecompute() {
+        filterTrigger.value = filterTrigger.value + 1
     }
 
     private fun observeSyncState() {
@@ -61,8 +90,14 @@ class DiaryListViewModel @Inject constructor(
 
     fun refresh() { syncManager.performSync() }
 
+    // ---------- 筛选 ----------
+
     fun clearFilters() {
-        _uiState.value = _uiState.value.copy(filterMood = null, filterWeather = null, filterFavorites = false, isLoading = true)
+        _uiState.value = _uiState.value.copy(
+            filterMood = null, filterWeather = null, filterFavorites = false,
+            selectedYear = null, selectedMonth = null, selectedDay = null,
+            availableMonths = emptyList(), availableDays = emptyList()
+        )
         observeDiaries(repository.observeAllDiaries())
     }
 
@@ -105,7 +140,52 @@ class DiaryListViewModel @Inject constructor(
         observeDiaries(flow)
     }
 
+    // ---------- 日期级联筛选 ----------
+
+    fun setFilterYear(year: Int?) {
+        val state = _uiState.value
+        if (state.selectedYear == year) {
+            _uiState.value = state.copy(selectedYear = null, selectedMonth = null, selectedDay = null,
+                availableMonths = emptyList(), availableDays = emptyList())
+        } else {
+            _uiState.value = state.copy(selectedYear = year, selectedMonth = null, selectedDay = null, availableDays = emptyList())
+        }
+        triggerRecompute()
+    }
+
+    fun setFilterMonth(month: Int?) {
+        val state = _uiState.value
+        if (state.selectedMonth == month) {
+            _uiState.value = state.copy(selectedMonth = null, selectedDay = null, availableDays = emptyList())
+        } else {
+            _uiState.value = state.copy(selectedMonth = month, selectedDay = null, availableDays = emptyList())
+        }
+        triggerRecompute()
+    }
+
+    fun setFilterDay(day: Int?) {
+        val state = _uiState.value
+        _uiState.value = state.copy(selectedDay = if (state.selectedDay == day) null else day)
+        triggerRecompute()
+    }
+
     /** 日记按年月分组 */
     fun groupByMonth(diaries: List<Diary>): Map<String, List<Diary>> =
         diaries.groupBy { it.diaryDate.take(7) } // yyyy-MM
+
+    // -------------------- 私有 --------------------
+
+    private fun applyFilters(base: List<Diary>, state: DiaryListUiState): List<Diary> {
+        var result = base
+        if (state.selectedYear != null) {
+            result = result.filter { it.diaryDate.startsWith("${state.selectedYear}-") }
+        }
+        if (state.selectedMonth != null) {
+            result = result.filter { it.diaryDate.substring(5, 7).toIntOrNull() == state.selectedMonth }
+        }
+        if (state.selectedDay != null) {
+            result = result.filter { it.diaryDate.takeLast(2).toIntOrNull() == state.selectedDay }
+        }
+        return result
+    }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.secretdiary.app.util.Base64Util
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,7 +12,7 @@ import javax.inject.Singleton
 /**
  * 管理 DEK 本地缓存与会话状态。
  * DEK 经 EncryptedSharedPreferences 加密存储（由 Android Keystore 主密钥保护）。
- * 缓存有效期 30 分钟（TTL），超时后需重新通过密码或生物识别获取。
+ * 缓存有效期 3 天（TTL），超时后需重新通过密码或生物识别获取。
  */
 @Singleton
 class SessionManager @Inject constructor(
@@ -28,7 +29,7 @@ class SessionManager @Inject constructor(
         private const val KEY_HAS_RECOVERY = "has_recovery"
         private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
         private const val KEY_DEK_RAW = "dek_raw"  // DEK 原始字节（Base64），用于重启后恢复
-        private const val DEK_TTL_MILLIS = 30 * 60 * 1000L // 30 分钟
+        private const val DEK_TTL_MILLIS = 3 * 24 * 60 * 60 * 1000L // 3 天
     }
 
     // 内存中的活跃 DEK（永不被 EncryptedSharedPreferences 明文存储）
@@ -71,10 +72,10 @@ class SessionManager @Inject constructor(
             .putString(KEY_WRAPPED_DEK, wrappedDek)
             .putString(KEY_SALT_ENC, saltEnc)
             .putString(KEY_SALT_AUTH, saltAuth)
-            .putString(KEY_DEK_RAW, android.util.Base64.encodeToString(dek.encoded, android.util.Base64.NO_WRAP))
+            .putString(KEY_DEK_RAW, Base64Util.encodeToString(dek.encoded))
             .putLong(KEY_DEK_STORED_AT, currentTimeMillis())
             .putBoolean(KEY_LAST_SESSION, true)
-            .putBoolean(KEY_HAS_RECOVERY, hasRecovery)
+            .putBoolean("${KEY_HAS_RECOVERY}_$username", hasRecovery)
             .apply()
     }
 
@@ -87,16 +88,24 @@ class SessionManager @Inject constructor(
     /** 获取 KEK 派生盐值（Base64） */
     fun getSaltEncB64(): String? = prefs.getString(KEY_SALT_ENC, null)
 
-    /** 获取/设置恢复口令托管状态 */
-    fun hasRecovery(): Boolean = prefs.getBoolean(KEY_HAS_RECOVERY, false)
+    /** 恢复口令托管状态（按用户隔离存储） */
+    fun hasRecovery(): Boolean {
+        val username = getUsername() ?: return false
+        return prefs.getBoolean("${KEY_HAS_RECOVERY}_$username", false)
+    }
     fun setHasRecovery(value: Boolean) {
-        prefs.edit().putBoolean(KEY_HAS_RECOVERY, value).apply()
+        val username = getUsername() ?: return
+        prefs.edit().putBoolean("${KEY_HAS_RECOVERY}_$username", value).apply()
     }
 
-    /** 生物识别开关偏好（持久化，独立于 DEK 状态） */
-    fun isBiometricEnabled(): Boolean = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
+    /** 生物识别开关偏好（按用户隔离存储） */
+    fun isBiometricEnabled(): Boolean {
+        val username = getUsername() ?: return false
+        return prefs.getBoolean("${KEY_BIOMETRIC_ENABLED}_$username", false)
+    }
     fun setBiometricEnabled(value: Boolean) {
-        prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
+        val username = getUsername() ?: return
+        prefs.edit().putBoolean("${KEY_BIOMETRIC_ENABLED}_$username", value).apply()
     }
 
     /**
@@ -113,7 +122,7 @@ class SessionManager @Inject constructor(
         // 重启后从持久化恢复（EncryptedSharedPreferences 由 Keystore 保护）
         val rawB64 = prefs.getString(KEY_DEK_RAW, null) ?: return null
         return try {
-            val keyBytes = android.util.Base64.decode(rawB64, android.util.Base64.NO_WRAP)
+            val keyBytes = Base64Util.decode(rawB64)
             val key = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
             activeDEK = key
             key
@@ -141,7 +150,7 @@ class SessionManager @Inject constructor(
      */
     fun recoverDEKFromPassword(password: String, cryptoManager: CryptoManager, iterations: Int = 600_000): javax.crypto.SecretKey? {
         val (wrappedDek, saltEnc) = loadWrappedDEK() ?: return null
-        val saltBytes = android.util.Base64.decode(saltEnc, android.util.Base64.NO_WRAP)
+        val saltBytes = Base64Util.decode(saltEnc)
         val kek = cryptoManager.deriveKEK(password, saltBytes, iterations)
         return try {
             cryptoManager.unwrapKey(wrappedDek, kek)
@@ -174,11 +183,22 @@ class SessionManager @Inject constructor(
      * 保留用户偏好：生物识别开关、恢复托管状态。
      */
     fun clearAll() {
-        val biometric = isBiometricEnabled()
-        val recovery = hasRecovery()
+        // 保存所有用户的生物识别和恢复托管偏好（per-user 隔离），清除后恢复
+        val biometricPrefs = mutableMapOf<String, Boolean>()
+        val recoveryPrefs = mutableMapOf<String, Boolean>()
+        for (key in prefs.all.keys) {
+            when {
+                key.startsWith("${KEY_BIOMETRIC_ENABLED}_") ->
+                    biometricPrefs[key] = prefs.getBoolean(key, false)
+                key.startsWith("${KEY_HAS_RECOVERY}_") ->
+                    recoveryPrefs[key] = prefs.getBoolean(key, false)
+            }
+        }
         prefs.edit().clear().apply()
-        setBiometricEnabled(biometric)
-        if (recovery) setHasRecovery(true)
+        val editor = prefs.edit()
+        biometricPrefs.forEach { (key, value) -> editor.putBoolean(key, value) }
+        recoveryPrefs.forEach { (key, value) -> editor.putBoolean(key, value) }
+        editor.apply()
     }
 
     /**

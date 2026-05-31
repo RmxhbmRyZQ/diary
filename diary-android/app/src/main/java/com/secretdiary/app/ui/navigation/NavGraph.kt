@@ -56,11 +56,21 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val currentRoute = navBackStackEntry.value?.destination?.route
     val sessionViewModel: SessionViewModel = hiltViewModel()
     val sessionExpired by sessionViewModel.sessionExpired.collectAsState()
+    val timeSkew by sessionViewModel.timeSkew.collectAsState()
+    val rateLimited by sessionViewModel.rateLimited.collectAsState()
     var showSessionExpiredDialog by remember { mutableStateOf(false) }
+    var showTimeSkewDialog by remember { mutableStateOf(false) }
+    var showRateLimitDialog by remember { mutableStateOf(false) }
 
     // 会话过期处理
     LaunchedEffect(sessionExpired) {
         if (sessionExpired) showSessionExpiredDialog = true
+    }
+    LaunchedEffect(timeSkew) {
+        if (timeSkew != null) showTimeSkewDialog = true
+    }
+    LaunchedEffect(rateLimited) {
+        if (rateLimited != null) showRateLimitDialog = true
     }
 
     // 会话过期对话框
@@ -74,6 +84,37 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                     showSessionExpiredDialog = false
                     sessionViewModel.dismissSessionExpired()
                     navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
+                }) { Text("确定") }
+            }
+        )
+    }
+
+    // 时间偏差对话框
+    if (showTimeSkewDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("时间偏差") },
+            text = { Text("客户端时间与服务器时间偏差过大，请校准系统时间后重试") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTimeSkewDialog = false
+                    sessionViewModel.dismissTimeSkew()
+                }) { Text("确定") }
+            }
+        )
+    }
+
+    // 限流对话框
+    if (showRateLimitDialog) {
+        val seconds = rateLimited ?: 60
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("请求过于频繁") },
+            text = { Text("请稍后再试（${seconds}秒后重试）") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRateLimitDialog = false
+                    sessionViewModel.dismissRateLimit()
                 }) { Text("确定") }
             }
         )
@@ -114,7 +155,7 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         NavHost(
             navController = navController,
             startDestination = Routes.LOGIN,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
         ) {
             composable(Routes.LOGIN) { LoginScreen(navController = navController) }
             composable(Routes.REGISTER) { RegisterScreen(navController = navController) }

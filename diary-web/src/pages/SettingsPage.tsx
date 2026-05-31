@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { deleteAccount, setRecovery, deleteRecovery, getRecovery } from '../api/auth';
-import { getAllEntries } from '../db/entries';
+import { getAllEntries, decryptCachedEntry } from '../db/entries';
 import { getAttachmentIv, putAttachmentIv } from '../db/attachments';
 import { syncEntries, batchGetEntries } from '../api/entries';
 import { downloadAttachment } from '../api/attachments';
@@ -158,7 +158,8 @@ export default function SettingsPage() {
     setMessage('');
     setLoading(true);
     try {
-      const entries = await getAllEntries();
+      const encryptedEntries = await getAllEntries();
+      const entries = await Promise.all(encryptedEntries.map((e) => decryptCachedEntry(e, dek)));
       const attachmentRefRegex = /!\[([^\]]*)\]\(attachment:([^)]+)\)/g;
       const exportData = [];
 
@@ -212,6 +213,7 @@ export default function SettingsPage() {
   };
 
   const handleEncryptedExport = async () => {
+    if (!dek) return;
     setError('');
     setMessage('');
     setLoading(true);
@@ -227,7 +229,8 @@ export default function SettingsPage() {
         allDetails.push(...batchResp.data.entries);
       }
 
-      const localEntries = await getAllEntries();
+      const encryptedLocalEntries = await getAllEntries();
+      const localEntries = await Promise.all(encryptedLocalEntries.map((e) => decryptCachedEntry(e, dek)));
       const attachmentIdsByEntry: Map<string, string[]> = new Map();
       for (const e of localEntries) {
         if (e.attachmentIds && e.attachmentIds.length > 0) {

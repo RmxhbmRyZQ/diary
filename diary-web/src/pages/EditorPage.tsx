@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getEntryById, getEntryByDiaryDate, putEntry, deleteEntry as deleteCachedEntry, buildEntryFromDecrypted, type CachedEntry } from '../db/entries';
+import { getEntryById, getEntryByDiaryDate, putEntry, deleteEntry as deleteCachedEntry, buildEncryptedEntry, decryptCachedEntry, type CachedEntry } from '../db/entries';
 import { putAttachmentIv } from '../db/attachments';
 import { createEntry, updateEntry, deleteEntry } from '../api/entries';
 import { uploadAttachment, deleteAttachment } from '../api/attachments';
@@ -45,8 +45,9 @@ export default function EditorPage() {
   useEffect(() => {
     if (isEdit || !dek) return;
     (async () => {
-      const existing = await getEntryByDiaryDate(diaryDate);
-      if (existing) {
+      const encrypted = await getEntryByDiaryDate(diaryDate);
+      if (encrypted) {
+        const existing = await decryptCachedEntry(encrypted, dek);
         setTitle(existing.title);
         setContent(existing.content);
         setTags(existing.tags.join(', '));
@@ -64,8 +65,9 @@ export default function EditorPage() {
     if (!isEdit || !dek) return;
     (async () => {
       try {
-        const cached = await getEntryById(id!);
-        if (cached) {
+        const encrypted = await getEntryById(id!);
+        if (encrypted) {
+          const cached = await decryptCachedEntry(encrypted, dek);
           setTitle(cached.title);
           setContent(cached.content);
           setTags(cached.tags.join(', '));
@@ -86,9 +88,10 @@ export default function EditorPage() {
 
   const handleDateChange = useCallback(async (newDate: string) => {
     setDiaryDate(newDate);
-    if (!isEdit) {
-      const existing = await getEntryByDiaryDate(newDate);
-      if (existing) {
+    if (!isEdit && dek) {
+      const encrypted = await getEntryByDiaryDate(newDate);
+      if (encrypted) {
+        const existing = await decryptCachedEntry(encrypted, dek);
         setTitle(existing.title);
         setContent(existing.content);
         setTags(existing.tags.join(', '));
@@ -112,7 +115,7 @@ export default function EditorPage() {
         setEditTargetId(null);
       }
     }
-  }, [isEdit]);
+  }, [isEdit, dek]);
 
   const handleSave = useCallback(async (e: FormEvent) => {
     e.preventDefault();
@@ -243,7 +246,7 @@ export default function EditorPage() {
       }
 
       // 7. Update cache
-      const cachedEntry: CachedEntry = buildEntryFromDecrypted(
+      const cachedEntry = buildEncryptedEntry(
         entryId,
         diaryDate,
         mood,
@@ -251,7 +254,8 @@ export default function EditorPage() {
         favorite,
         newVersion,
         serverUpdatedAt,
-        { title: title.trim(), content: markdown, tags: tagList, attachmentIds: allAttachmentIds },
+        encryptedPayload,
+        payloadIv,
       );
       await putEntry(cachedEntry);
 

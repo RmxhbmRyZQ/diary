@@ -11,25 +11,18 @@ interface MarkdownEditorProps {
 }
 
 function TempImageThumb({ file, alt, onRemove }: { file: File; alt: string; onRemove: () => void }) {
-  const urlRef = useRef<string | null>(null);
-
-  if (!urlRef.current) {
-    urlRef.current = URL.createObjectURL(file);
-  }
+  const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
-    };
-  }, []);
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
 
   return (
     <div className="relative group">
       <img
-        src={urlRef.current}
+        src={url || ''}
         alt={alt}
         className="h-16 w-16 object-cover rounded-lg border border-gray-200"
       />

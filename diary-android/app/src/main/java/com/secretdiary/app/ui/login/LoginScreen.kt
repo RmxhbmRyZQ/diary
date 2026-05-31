@@ -1,18 +1,10 @@
 package com.secretdiary.app.ui.login
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -32,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.secretdiary.app.ui.components.WarmButton
 import com.secretdiary.app.ui.components.WarmCard
+import com.secretdiary.app.ui.components.WarmProgressBar
 import com.secretdiary.app.ui.navigation.Routes
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,12 +101,12 @@ fun LoginScreen(
 
             if (uiState.isLoading) {
                 Spacer(modifier = Modifier.height(12.dp))
-                LoginProgressBar()
+                WarmProgressBar()
             }
 
             if (uiState.isBiometricAvailable) {
                 Spacer(modifier = Modifier.height(12.dp))
-                val activity = LocalContext.current as? FragmentActivity
+                val activity = LocalContext.current.findFragmentActivity()
                 OutlinedButton(
                     onClick = { activity?.let { viewModel.startBiometricAuth(it) } },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -147,33 +140,12 @@ fun LoginScreen(
     }
 }
 
-@Composable
-private fun LoginProgressBar() {
-    val infiniteTransition = rememberInfiniteTransition(label = "loginProgress")
-    val offset by infiniteTransition.animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "offset"
-    )
-    val primary = MaterialTheme.colorScheme.primary
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(3.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(primary.copy(alpha = 0.15f))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.4f)
-                .fillMaxHeight()
-                .offset(x = (offset * 300).dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(primary)
-        )
+/** 沿 ContextWrapper 链解包找到 FragmentActivity，兼容 Compose 对 Context 的包装 */
+private fun Context.findFragmentActivity(): FragmentActivity? {
+    var ctx: Context? = this
+    while (ctx != null) {
+        if (ctx is FragmentActivity) return ctx
+        ctx = if (ctx is ContextWrapper) ctx.baseContext else null
     }
+    return null
 }

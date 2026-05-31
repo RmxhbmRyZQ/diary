@@ -33,8 +33,14 @@ class DiaryRepositoryTest {
     private val sessionManager: SessionManager = mockk(relaxed = true)
     private lateinit var repository: DiaryRepository
 
+    private val mockDek: javax.crypto.SecretKey = mockk(relaxed = true)
+
     @Before
     fun setUp() {
+        every { sessionManager.getUsername() } returns "testuser"
+        every { sessionManager.getActiveDEK() } returns mockDek
+        every { cryptoManager.encrypt(any<ByteArray>(), any()) } returns ("enc_content" to "iv_b64")
+        every { cryptoManager.decrypt("enc_content", "iv_b64", any()) } returns "Test Content".toByteArray(Charsets.UTF_8)
         repository = DiaryRepository(
             entryDao, attachmentIvDao, syncMetaDao,
             apiService, cryptoManager, sessionManager
@@ -53,7 +59,7 @@ class DiaryRepositoryTest {
     @Test
     fun `getById returns diary when entry exists`() = runTest {
         val entity = createTestEntity()
-        coEvery { entryDao.getById("id1") } returns entity
+        coEvery { entryDao.getById("testuser", "id1") } returns entity
 
         val result = repository.getById("id1")
 
@@ -65,7 +71,7 @@ class DiaryRepositoryTest {
 
     @Test
     fun `getById returns null when entry not found`() = runTest {
-        coEvery { entryDao.getById("nonexistent") } returns null
+        coEvery { entryDao.getById("testuser", "nonexistent") } returns null
 
         val result = repository.getById("nonexistent")
 
@@ -75,7 +81,7 @@ class DiaryRepositoryTest {
     @Test
     fun `observeAllDiaries returns flow of diaries`() = runTest {
         val entity = createTestEntity()
-        every { entryDao.observeAll() } returns flowOf(listOf(entity))
+        every { entryDao.observeAll("testuser") } returns flowOf(listOf(entity))
 
         repository.observeAllDiaries().collect { diaries ->
             assertEquals(1, diaries.size)
@@ -86,7 +92,7 @@ class DiaryRepositoryTest {
     @Test
     fun `getDirtyEntries returns only dirty entries`() = runTest {
         val dirty = createTestEntity().copy(isDirty = true)
-        coEvery { entryDao.getDirtyEntries() } returns listOf(dirty)
+        coEvery { entryDao.getDirtyEntries("testuser") } returns listOf(dirty)
 
         val result = repository.getDirtyEntries()
 
@@ -118,7 +124,7 @@ class DiaryRepositoryTest {
 
     @Test
     fun `getLastSyncTimestamp returns null when not stored`() = runTest {
-        coEvery { syncMetaDao.getByKey("last_sync_timestamp") } returns null
+        coEvery { syncMetaDao.getByKey("last_sync_timestamp_testuser") } returns null
 
         val result = repository.getLastSyncTimestamp()
 
@@ -127,8 +133,8 @@ class DiaryRepositoryTest {
 
     @Test
     fun `getLastSyncTimestamp returns stored value`() = runTest {
-        coEvery { syncMetaDao.getByKey("last_sync_timestamp") } returns
-            SyncMetaEntity("last_sync_timestamp", "2026-05-28T10:00:00+08:00")
+        coEvery { syncMetaDao.getByKey("last_sync_timestamp_testuser") } returns
+            SyncMetaEntity("last_sync_timestamp_testuser", "2026-05-28T10:00:00+08:00")
 
         val result = repository.getLastSyncTimestamp()
 
@@ -141,7 +147,7 @@ class DiaryRepositoryTest {
 
         repository.updateLastSyncTimestamp("2026-05-29T12:00:00+08:00")
 
-        coVerify { syncMetaDao.upsert(SyncMetaEntity("last_sync_timestamp", "2026-05-29T12:00:00+08:00")) }
+        coVerify { syncMetaDao.upsert(SyncMetaEntity("last_sync_timestamp_testuser", "2026-05-29T12:00:00+08:00")) }
     }
 
     // -------------------- batch fetch --------------------
@@ -165,19 +171,13 @@ class DiaryRepositoryTest {
     // -------------------- helpers --------------------
 
     private fun createTestEntity() = EntryEntity(
-        id = "id1",
-        diaryDate = "2026-05-28",
+        id = "id1", userId = "testuser", diaryDate = "2026-05-28",
         title = "Test Title",
-        content = "Test Content",
-        summary = "Test Content",
-        tags = "[\"tag1\"]",
-        mood = "happy",
-        weather = null,
-        favorite = false,
+        encryptedContent = "enc_content", contentIv = "iv_b64",
+        summary = "Test Content", tags = "[\"tag1\"]",
+        mood = "happy", weather = null, favorite = false,
         attachmentIds = "[]",
-        serverVersion = 1,
-        serverUpdatedAt = "2026-05-28T10:00:00+08:00",
-        localUpdatedAt = "2026-05-28T10:00:00+08:00",
-        isDirty = false
+        serverVersion = 1, serverUpdatedAt = "2026-05-28T10:00:00+08:00",
+        localUpdatedAt = "2026-05-28T10:00:00+08:00", isDirty = false
     )
 }
