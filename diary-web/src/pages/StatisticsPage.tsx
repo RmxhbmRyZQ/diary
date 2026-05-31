@@ -20,10 +20,16 @@ export default function StatisticsPage() {
   useEffect(() => {
     if (!dek) return;
     (async () => {
-      const encrypted = await getAllEntries();
-      const all = await Promise.all(encrypted.map((e) => decryptCachedEntry(e, dek)));
-      setEntries(all);
-      setLoading(false);
+      try {
+        const encrypted = await getAllEntries();
+        const results = await Promise.allSettled(encrypted.map((e) => decryptCachedEntry(e, dek)));
+        const all = results
+          .filter((r): r is PromiseFulfilledResult<CachedEntry> => r.status === 'fulfilled')
+          .map((r) => r.value);
+        setEntries(all);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [dek]);
 

@@ -15,48 +15,48 @@ export default function AttachmentImage({ attachmentId, alt = '', className = ''
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
+  const lastIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!dek) return;
-    let cancelled = false;
+    if (lastIdRef.current === attachmentId) return;
+    lastIdRef.current = attachmentId;
+    const currentId = attachmentId;
 
     (async () => {
       try {
-        const { data, sha256, iv: headerIv, contentType } = await downloadAttachment(attachmentId);
+        const { data, sha256, iv: headerIv, contentType } = await downloadAttachment(currentId);
 
-        // Verify SHA-256
         if (sha256) {
           const computedHash = await crypto.subtle.digest('SHA-256', data);
           const computedHex = Array.from(new Uint8Array(computedHash))
             .map((b) => b.toString(16).padStart(2, '0'))
             .join('');
           if (computedHex !== sha256.toLowerCase()) {
-            if (!cancelled) setError(true);
+            if (lastIdRef.current === currentId) setError(true);
             return;
           }
         }
 
-        // Look up the IV from local storage, fall back to response header
-        let ivB64 = await getAttachmentIv(attachmentId);
+        let ivB64 = await getAttachmentIv(currentId);
         if (!ivB64 && headerIv) {
           ivB64 = headerIv;
-          await putAttachmentIv(attachmentId, headerIv);
+          await putAttachmentIv(currentId, headerIv);
         }
         if (!ivB64) {
-          if (!cancelled) setError(true);
+          if (lastIdRef.current === currentId) setError(true);
           return;
         }
 
         const iv = new Uint8Array(base64ToArrayBuffer(ivB64));
 
-        // Decrypt
         const plaintext = await crypto.subtle.decrypt(
           { name: 'AES-GCM', iv },
           dek,
           data,
         );
 
-        if (!cancelled) {
+        if (lastIdRef.current === currentId) {
           const blob = new Blob([plaintext], { type: contentType });
           const url = URL.createObjectURL(blob);
           if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
@@ -64,12 +64,11 @@ export default function AttachmentImage({ attachmentId, alt = '', className = ''
           setSrc(url);
         }
       } catch {
-        if (!cancelled) setError(true);
+        if (lastIdRef.current === currentId) setError(true);
       }
     })();
 
     return () => {
-      cancelled = true;
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;

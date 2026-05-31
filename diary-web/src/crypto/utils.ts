@@ -18,7 +18,8 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 export function stringToArrayBuffer(str: string): ArrayBuffer {
   const encoder = new TextEncoder();
-  return encoder.encode(str).buffer as ArrayBuffer;
+  const encoded = encoder.encode(str);
+  return encoded.buffer.slice(0, encoded.byteLength);
 }
 
 export function arrayBufferToString(buffer: ArrayBuffer): string {

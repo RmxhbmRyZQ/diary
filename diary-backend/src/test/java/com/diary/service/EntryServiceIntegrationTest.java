@@ -48,7 +48,7 @@ class EntryServiceIntegrationTest {
     void setUp() {
         userId = UUID.randomUUID().toString();
         User user = new User(userId, "entrytest", "auth-hash", "salt-auth",
-                "encrypted-dek", "encrypted-dek-recovery", "salt-enc", 1, "{}");
+                "encrypted-dek", "salt-enc", 1, "{}");
         userRepository.save(user);
     }
 
@@ -119,7 +119,7 @@ class EntryServiceIntegrationTest {
         EntryResponse e1 = createEntry(LocalDate.of(2026, 5, 27), "happy", "sunny");
 
         String otherUserId = UUID.randomUUID().toString();
-        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "dekr", "saltEnc", 1, "{}");
+        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(otherUser);
 
         List<EntryResponse> batch = entryService.getBatch(otherUserId, List.of(e1.getId()));
@@ -272,7 +272,7 @@ class EntryServiceIntegrationTest {
         createEntry(LocalDate.of(2026, 5, 27), "happy", "sunny");
 
         String otherUserId = UUID.randomUUID().toString();
-        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "dekr", "saltEnc", 1, "{}");
+        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(otherUser);
 
         Entry otherEntry = new Entry(UUID.randomUUID().toString(), otherUserId,

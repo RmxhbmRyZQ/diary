@@ -65,7 +65,7 @@ public class AppConfig {
         private int registerPerHour = 3;
         private int recoveryPerMinute = 5;
         private int apiPerMinute = 60;
-        private int attachmentPerMinute = 10;
+        private int attachmentPerMinute = 60;
 
         public int getLoginPerMinute() { return loginPerMinute; }
         public void setLoginPerMinute(int loginPerMinute) { this.loginPerMinute = loginPerMinute; }

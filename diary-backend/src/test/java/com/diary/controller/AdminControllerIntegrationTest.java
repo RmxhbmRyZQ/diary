@@ -177,7 +177,7 @@ class AdminControllerIntegrationTest {
         String token = loginAndGetToken();
 
         User user = new User(UUID.randomUUID().toString(), "testuser", "hash",
-                "salt", "dek", "dekr", "saltEnc", 1, "{}");
+                "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(user);
 
         mockMvc.perform(get("/admin/users")
@@ -194,7 +194,7 @@ class AdminControllerIntegrationTest {
         String token = loginAndGetToken();
 
         User user = new User(UUID.randomUUID().toString(), "testuser", "hash",
-                "salt", "dek", "dekr", "saltEnc", 1, "{}");
+                "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(user);
 
         mockMvc.perform(delete("/admin/users/" + user.getId())
@@ -220,7 +220,7 @@ class AdminControllerIntegrationTest {
         String token = loginAndGetToken();
 
         User user = new User(UUID.randomUUID().toString(), "testuser", "hash",
-                "salt", "dek", "dekr", "saltEnc", 1, "{}");
+                "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(user);
 
         mockMvc.perform(get("/admin/dashboard")

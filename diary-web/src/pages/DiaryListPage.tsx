@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAllEntries, decryptCachedEntry, type CachedEntry } from '../db/entries';
@@ -25,15 +25,18 @@ export default function DiaryListPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(true);
   const [syncError, setSyncError] = useState('');
+  const syncedRef = useRef(false);
 
   useEffect(() => {
     if (!dek || !user) {
       setSyncing(false);
       return;
     }
+    if (syncedRef.current) return;
+    syncedRef.current = true;
     (async () => {
       try {
-        await fullSync(user.username);
+        await fullSync(user.username, user.userId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : '同步失败，请检查网络连接';
         setSyncError(msg);

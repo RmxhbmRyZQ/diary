@@ -81,7 +81,7 @@ class AuthControllerTest {
     @Test
     void should_return_success_on_valid_register() throws Exception {
         com.diary.model.entity.User mockUser = new com.diary.model.entity.User(
-                "test-uuid", "testuser", "hash", "salt", "dek", "dekr", "saltEnc", 1, "{}"
+                "test-uuid", "testuser", "hash", "salt", "dek", "saltEnc", 1, "{}"
         );
         mockUser.setId("test-uuid");
         mockUser.setCreatedAt(java.time.Instant.now());

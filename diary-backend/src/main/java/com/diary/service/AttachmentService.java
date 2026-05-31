@@ -4,6 +4,7 @@ import com.diary.config.AppConfig;
 import com.diary.exception.BusinessException;
 import com.diary.model.entity.Attachment;
 import com.diary.repository.AttachmentRepository;
+import com.diary.repository.EntryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,10 +25,13 @@ public class AttachmentService {
 
     private final AttachmentRepository attachmentRepository;
     private final AppConfig appConfig;
+    private final EntryRepository entryRepository;
 
-    public AttachmentService(AttachmentRepository attachmentRepository, AppConfig appConfig) {
+    public AttachmentService(AttachmentRepository attachmentRepository, AppConfig appConfig,
+                            EntryRepository entryRepository) {
         this.attachmentRepository = attachmentRepository;
         this.appConfig = appConfig;
+        this.entryRepository = entryRepository;
     }
 
     @Transactional
@@ -36,7 +40,15 @@ public class AttachmentService {
             throw new BusinessException(400, "文件大小超过限制");
         }
 
-        long count = attachmentRepository.countByDiaryId(diaryId);
+        // 仅对已存在的日记校验所有权；占位 diary_id 跳过检查
+        if (!"00000000-0000-0000-0000-000000000000".equals(diaryId)
+                && entryRepository.existsById(diaryId)
+                && !entryRepository.existsByIdAndUserId(diaryId, userId)) {
+            throw new BusinessException(403, "无权操作该日记");
+        }
+
+        // 按用户+日记维度限制附件数，防止跨用户耗尽配额
+        long count = attachmentRepository.countByDiaryIdAndUserId(diaryId, userId);
         if (count >= appConfig.getUpload().getMaxPerEntry()) {
             throw new BusinessException(400, "附件数量已达上限");
         }
@@ -141,8 +153,9 @@ public class AttachmentService {
 
         for (Attachment att : unattached) {
             try {
-                Files.deleteIfExists(Paths.get(att.getFilePath()));
+                // 先删除 DB 记录，防止事务回滚时文件已删导致数据不一致
                 attachmentRepository.delete(att);
+                Files.deleteIfExists(Paths.get(att.getFilePath()));
                 log.info("Cleaned up unattached attachment: id={}", att.getId());
             } catch (IOException e) {
                 log.warn("Failed to clean up attachment file: {}", att.getFilePath());

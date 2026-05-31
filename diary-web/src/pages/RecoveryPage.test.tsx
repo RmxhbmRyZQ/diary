@@ -44,7 +44,9 @@ describe('RecoveryPage', () => {
   });
 
   it('should show user not found error', async () => {
-    vi.mocked(authApi.getRecovery).mockRejectedValue({ code: 404 });
+    const err = new Error('用户不存在');
+    (err as Record<string, unknown>).code = 404;
+    vi.mocked(authApi.getRecovery).mockRejectedValue(err);
 
     renderRecoveryPage();
 

@@ -66,7 +66,7 @@ class EntryControllerIntegrationTest {
     void setUp() throws Exception {
         userId = UUID.randomUUID().toString();
         User user = new User(userId, "entryctltest", "auth-hash", "salt-auth",
-                "encrypted-dek", "encrypted-dek-recovery", "salt-enc", 1, "{}");
+                "encrypted-dek", "salt-enc", 1, "{}");
         userRepository.save(user);
 
         doAnswer(inv -> {
@@ -303,7 +303,7 @@ class EntryControllerIntegrationTest {
         saveEntryDirectly(entryId, 1, "payload");
 
         String otherUserId = UUID.randomUUID().toString();
-        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "dekr", "saltEnc", 1, "{}");
+        User otherUser = new User(otherUserId, "other", "hash", "salt", "dek", "saltEnc", 1, "{}");
         userRepository.save(otherUser);
 
         mockMvc.perform(delete("/api/v1/entries/" + entryId)

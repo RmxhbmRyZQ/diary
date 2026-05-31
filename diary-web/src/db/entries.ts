@@ -3,6 +3,7 @@ import { decryptPayload } from '../crypto/cryptoService';
 
 export interface EncryptedCachedEntry {
   diaryId: string;
+  userId: string;
   diaryDate: string;
   encryptedPayload: string;
   iv: string;
@@ -57,6 +58,7 @@ export async function decryptCachedEntry(
 
 export function buildEncryptedEntry(
   id: string,
+  userId: string,
   diaryDate: string,
   mood: string | null,
   weather: string | null,
@@ -68,6 +70,7 @@ export function buildEncryptedEntry(
 ): EncryptedCachedEntry {
   return {
     diaryId: id,
+    userId,
     diaryDate,
     encryptedPayload,
     iv,
@@ -133,7 +136,8 @@ export async function getFavoriteEntries(): Promise<EncryptedCachedEntry[]> {
 
 export async function getEntryByDiaryDate(diaryDate: string): Promise<EncryptedCachedEntry | undefined> {
   const db = await getDB();
-  return db.getFromIndex('entries', 'diaryDate', diaryDate);
+  const all = await db.getAll('entries');
+  return all.find((e) => e.diaryDate === diaryDate);
 }
 
 export async function clearAllEntries(): Promise<void> {

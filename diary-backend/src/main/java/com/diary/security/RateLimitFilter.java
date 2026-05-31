@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 @Component
-@Order(0)
+@Order(3)
 public class RateLimitFilter implements Filter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
@@ -46,7 +46,7 @@ public class RateLimitFilter implements Filter {
             }
         }
 
-        if (path.equals("/api/v1/auth/recovery") && "GET".equalsIgnoreCase(req.getMethod())) {
+        if (path.startsWith("/api/v1/auth/recovery")) {
             if (!rateLimiter.tryRecovery(clientIp)) {
                 sendRateLimited(res, "请求过于频繁，请稍后再试");
                 return;
@@ -62,7 +62,8 @@ public class RateLimitFilter implements Filter {
         }
 
         if (path.startsWith("/api/v1/") && !path.startsWith("/api/v1/auth/")
-                && !path.startsWith("/api/v1/config")) {
+                && !path.startsWith("/api/v1/config")
+                && !path.startsWith("/api/v1/entries")) {
             String userId = (String) req.getAttribute("userId");
             if (userId != null && !rateLimiter.tryApi(userId)) {
                 sendRateLimited(res, "请求过于频繁，请稍后再试");

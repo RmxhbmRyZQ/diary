@@ -4,6 +4,7 @@ import com.diary.config.AppConfig;
 import com.diary.exception.BusinessException;
 import com.diary.model.entity.Attachment;
 import com.diary.repository.AttachmentRepository;
+import com.diary.repository.EntryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,9 @@ class AttachmentServiceTest {
 
     @Mock
     private AttachmentRepository attachmentRepository;
+
+    @Mock
+    private EntryRepository entryRepository;
 
     @Mock
     private AppConfig appConfig;
@@ -62,7 +66,7 @@ class AttachmentServiceTest {
 
     @Test
     void should_throw_when_attachment_limit_exceeded() {
-        when(attachmentRepository.countByDiaryId("diary-1")).thenReturn(20L);
+        when(attachmentRepository.countByDiaryIdAndUserId("diary-1", userId)).thenReturn(20L);
         MultipartFile file = new MockMultipartFile("file", "test.png",
                 "image/png", new byte[10]);
 

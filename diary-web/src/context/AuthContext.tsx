@@ -10,7 +10,6 @@ import {
 } from '../crypto/cryptoService';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../crypto/utils';
 import * as authApi from '../api/auth';
-import { clearAllData } from '../db';
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -194,11 +193,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const sessionCheckedRef = useRef(false);
+  const configLoadedRef = useRef(false);
+
   useEffect(() => {
+    if (sessionCheckedRef.current) return;
+    sessionCheckedRef.current = true;
     checkSession();
   }, [checkSession]);
 
   useEffect(() => {
+    if (configLoadedRef.current) return;
+    configLoadedRef.current = true;
     authApi.getConfig().then((result) => {
       const iterations = Number(result.data?.kdf?.iterations);
       if (iterations > 0) {
@@ -242,10 +248,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: unknown) {
       const e = err as { code?: number; message?: string };
-      if (e.code === 404) {
-        throw new Error('用户名或密码错误');
+      // 区分限流错误与其他错误，避免将 429 误报为"用户名或密码错误"
+      if (e.code === 429) {
+        throw new Error(e.message || '请求过于频繁，请稍后再试');
       }
-      throw new Error(e.message || '用户名或密码错误');
+      throw new Error('用户名或密码错误');
     }
 
     const iterations = Number(kdfIterationsRef.current) || 600000;
@@ -345,11 +352,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       needsUnlock: false,
       dek: null,
     });
-    try {
-      await clearAllData();
-    } catch {
-      // 清除缓存失败不阻塞注销
-    }
   }, []);
 
   const dismissKdfUpgrade = useCallback(() => {

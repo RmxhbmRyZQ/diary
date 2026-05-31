@@ -35,7 +35,7 @@ function saveLastSyncTime(username: string) {
   localStorage.setItem(syncKey(username), toBeijingISOString());
 }
 
-export async function fullSync(username: string, since?: string): Promise<SyncResult> {
+export async function fullSync(username: string, userId: string, since?: string): Promise<SyncResult> {
   const effectiveSince = since ?? getLastSyncTime(username);
 
   let response;
@@ -52,11 +52,22 @@ export async function fullSync(username: string, since?: string): Promise<SyncRe
   }
 
   const serverEntries: SyncEntry[] = response.data.entries;
+  const serverIds = new Set(serverEntries.map((e) => e.id));
 
   const localEntries = await getAllEntries();
-  const localMap = new Map(localEntries.map((e) => [e.diaryId, e]));
+  // Clean up entries from other users on every sync
+  const otherUserIds = localEntries.filter((e) => e.userId !== userId);
+  if (otherUserIds.length > 0) {
+    const db = await (await import('../db/index')).getDB();
+    const tx = db.transaction('entries', 'readwrite');
+    for (const e of otherUserIds) {
+      await tx.store.delete(e.diaryId);
+    }
+    await tx.done;
+  }
 
-  const serverIds = new Set(serverEntries.map((e) => e.id));
+  const myEntries = localEntries.filter((e) => e.userId === userId);
+  const localMap = new Map(myEntries.map((e) => [e.diaryId, e]));
 
   const needFetch: string[] = [];
   let added = 0;
@@ -75,8 +86,7 @@ export async function fullSync(username: string, since?: string): Promise<SyncRe
 
   let removed = 0;
   if (!effectiveSince) {
-    // Full sync: detect deletions by removing local entries not on server
-    removed = localEntries.filter((e) => !serverIds.has(e.diaryId)).length;
+    removed = myEntries.filter((e) => !serverIds.has(e.diaryId)).length;
     await deleteEntriesNotIn(serverIds);
   }
 
@@ -90,6 +100,7 @@ export async function fullSync(username: string, since?: string): Promise<SyncRe
       for (const detail of details) {
         const cached = buildEncryptedEntry(
           detail.id,
+          userId,
           detail.diaryDate,
           detail.mood,
           detail.weather,

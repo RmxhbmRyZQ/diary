@@ -139,7 +139,6 @@ class AuthServiceTest {
         req.setOldAuthKey("correct-key");
         req.setNewAuthKeyHash("new-raw-key");
         req.setNewEncryptedDek("new-dek");
-        req.setNewEncryptedDekRecovery("new-dek-rec");
         req.setNewSaltEnc("new-salt");
         req.setNewKdfParams(Map.of("algorithm", "pbkdf2-sha256", "iterations", 800000));
 
@@ -193,6 +192,8 @@ class AuthServiceTest {
         SetRecoveryRequest req = new SetRecoveryRequest();
         req.setRecoveryData("recovery-data-encrypted");
         req.setRecoverySalt("recovery-salt");
+        req.setChallenge("challenge-plaintext");
+        req.setEncryptedChallenge("encrypted-challenge");
 
         String hash = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(4)
                 .encode("test-password");
@@ -214,7 +215,6 @@ class AuthServiceTest {
         req.setAuthKey("raw-auth-key");
         req.setSaltAuth("salt-auth-base64");
         req.setEncryptedDek("encrypted-dek-base64");
-        req.setEncryptedDekRecovery("encrypted-dek-rec-base64");
         req.setSaltEnc("salt-enc-base64");
         req.setKdfVersion(1);
         req.setKdfParams(Map.of("algorithm", "pbkdf2-sha256", "iterations", 600000));
@@ -225,7 +225,7 @@ class AuthServiceTest {
         String userId = UUID.randomUUID().toString();
         User user = new User(
                 userId, "testuser", authKeyHash,
-                "salt-auth", "enc-dek", "enc-dek-rec", "salt-enc",
+                "salt-auth", "enc-dek", "salt-enc",
                 1, "{\"algorithm\":\"pbkdf2-sha256\",\"iterations\":600000}"
         );
         user.setId(userId);

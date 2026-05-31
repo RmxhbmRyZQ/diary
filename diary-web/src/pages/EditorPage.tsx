@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getEntryById, getEntryByDiaryDate, putEntry, deleteEntry as deleteCachedEntry, buildEncryptedEntry, decryptCachedEntry, type CachedEntry } from '../db/entries';
+import { getAllEntries, getEntryById, putEntry, deleteEntry as deleteCachedEntry, buildEncryptedEntry, decryptCachedEntry, type CachedEntry } from '../db/entries';
 import { putAttachmentIv } from '../db/attachments';
 import { createEntry, updateEntry, deleteEntry } from '../api/entries';
 import { uploadAttachment, deleteAttachment } from '../api/attachments';
@@ -21,7 +21,7 @@ const PLACEHOLDER_DIARY_ID = '00000000-0000-0000-0000-000000000000';
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { dek } = useAuth();
+  const { user, dek } = useAuth();
   const isEdit = id && id !== 'new';
 
   const [title, setTitle] = useState('');
@@ -45,21 +45,27 @@ export default function EditorPage() {
   useEffect(() => {
     if (isEdit || !dek) return;
     (async () => {
-      const encrypted = await getEntryByDiaryDate(diaryDate);
-      if (encrypted) {
-        const existing = await decryptCachedEntry(encrypted, dek);
-        setTitle(existing.title);
-        setContent(existing.content);
-        setTags(existing.tags.join(', '));
-        setMood(existing.mood);
-        setWeather(existing.weather);
-        setFavorite(existing.favorite);
-        setVersion(existing.serverVersion);
-        setExistingAttachmentIds(existing.attachmentIds);
-        setEditTargetId(existing.diaryId);
+      const all = await getAllEntries();
+      for (const entry of all) {
+        if (entry.diaryDate !== diaryDate || entry.userId !== user?.userId) continue;
+        try {
+          const existing = await decryptCachedEntry(entry, dek);
+          setTitle(existing.title);
+          setContent(existing.content);
+          setTags(existing.tags.join(', '));
+          setMood(existing.mood);
+          setWeather(existing.weather);
+          setFavorite(existing.favorite);
+          setVersion(existing.serverVersion);
+          setExistingAttachmentIds(existing.attachmentIds);
+          setEditTargetId(existing.diaryId);
+          break;
+        } catch {
+          // skip undecryptable entries
+        }
       }
     })();
-  }, [isEdit, dek]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEdit, dek]);
 
   useEffect(() => {
     if (!isEdit || !dek) return;
@@ -89,20 +95,29 @@ export default function EditorPage() {
   const handleDateChange = useCallback(async (newDate: string) => {
     setDiaryDate(newDate);
     if (!isEdit && dek) {
-      const encrypted = await getEntryByDiaryDate(newDate);
-      if (encrypted) {
-        const existing = await decryptCachedEntry(encrypted, dek);
-        setTitle(existing.title);
-        setContent(existing.content);
-        setTags(existing.tags.join(', '));
-        setMood(existing.mood);
-        setWeather(existing.weather);
-        setFavorite(existing.favorite);
-        setVersion(existing.serverVersion);
-        setExistingAttachmentIds(existing.attachmentIds);
-        setEditTargetId(existing.diaryId);
-        setTempImages(new Map());
-      } else {
+      const all = await getAllEntries();
+      let filled = false;
+      for (const entry of all) {
+        if (entry.diaryDate !== newDate || entry.userId !== user?.userId) continue;
+        try {
+          const existing = await decryptCachedEntry(entry, dek);
+          setTitle(existing.title);
+          setContent(existing.content);
+          setTags(existing.tags.join(', '));
+          setMood(existing.mood);
+          setWeather(existing.weather);
+          setFavorite(existing.favorite);
+          setVersion(existing.serverVersion);
+          setExistingAttachmentIds(existing.attachmentIds);
+          setEditTargetId(existing.diaryId);
+          setTempImages(new Map());
+          filled = true;
+          break;
+        } catch {
+          // skip undecryptable entries
+        }
+      }
+      if (!filled) {
         setTitle('');
         setContent('');
         setTags('');
@@ -248,6 +263,7 @@ export default function EditorPage() {
       // 7. Update cache
       const cachedEntry = buildEncryptedEntry(
         entryId,
+        user!.userId,
         diaryDate,
         mood,
         weather,

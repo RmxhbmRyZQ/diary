@@ -102,11 +102,7 @@ public class AdminService {
 
         List<Attachment> attachments = attachmentRepository.findByUserId(userId);
 
-        entryRepository.deleteAllByUserId(userId);
-        attachmentRepository.deleteAllByUserId(userId);
-        sessionRepository.deleteAllByUserId(userId);
-        userRepository.delete(user);
-
+        // 先删除文件，再删除数据库记录，防止中途崩溃导致孤
         for (Attachment att : attachments) {
             try {
                 Files.deleteIfExists(Paths.get(att.getFilePath()));
@@ -121,6 +117,11 @@ public class AdminService {
         } catch (IOException e) {
             log.warn("Failed to delete user directory: userId={}", userId);
         }
+
+        entryRepository.deleteAllByUserId(userId);
+        attachmentRepository.deleteAllByUserId(userId);
+        sessionRepository.deleteAllByUserId(userId);
+        userRepository.delete(user);
 
         log.info("Admin deleted user: userId={}", userId);
     }

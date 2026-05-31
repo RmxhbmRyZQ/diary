@@ -199,11 +199,7 @@ public class AuthService {
 
         var attachments = attachmentRepository.findByUserId(userId);
 
-        entryRepository.deleteAllByUserId(userId);
-        attachmentRepository.deleteAllByUserId(userId);
-        userRepository.delete(user);
-        sessionRepository.deleteAllByUserId(userId);
-
+        // 先删除文件，再删除数据库记录，防止中途崩溃导致孤
         for (var att : attachments) {
             try {
                 Files.deleteIfExists(Paths.get(att.getFilePath()));
@@ -218,6 +214,11 @@ public class AuthService {
         } catch (IOException e) {
             log.warn("Failed to delete user directory: userId={}", userId);
         }
+
+        entryRepository.deleteAllByUserId(userId);
+        attachmentRepository.deleteAllByUserId(userId);
+        sessionRepository.deleteAllByUserId(userId);
+        userRepository.delete(user);
 
         log.info("Account deleted: userId={}", userId);
     }
@@ -256,17 +257,20 @@ public class AuthService {
 
     @Transactional
     public void recoveryReset(RecoveryResetRequest req) {
-        User user = userRepository.findByUsername(req.getUsername())
-                .orElseThrow(() -> new BusinessException(404, "用户不存在"));
+        // 防止用户名枚举：无论用户是否存在或是否设置恢复，统一返回相同错误
+        User user = userRepository.findByUsername(req.getUsername()).orElse(null);
+        if (user == null
+                || user.getRecoveryChallengeEncrypted() == null
+                || user.getRecoveryChallengeEncrypted().isEmpty()) {
+            throw new BusinessException(400, "该用户未设置恢复口令，无法通过此方式重置密码");
+        }
 
-        if (user.getRecoveryChallengeEncrypted() != null
-                && !user.getRecoveryChallengeEncrypted().isEmpty()) {
-            if (req.getEncryptedChallenge() == null || req.getEncryptedChallenge().isBlank()) {
-                throw new BusinessException(400, "缺少恢复口令验证凭证");
-            }
-            if (!req.getEncryptedChallenge().equals(user.getRecoveryChallengeEncrypted())) {
-                throw new BusinessException(401, "恢复口令验证失败");
-            }
+        // 质询-应答验证：证明用户持有正确的恢复口令
+        if (req.getEncryptedChallenge() == null || req.getEncryptedChallenge().isBlank()) {
+            throw new BusinessException(400, "缺少恢复口令验证凭证");
+        }
+        if (!req.getEncryptedChallenge().equals(user.getRecoveryChallengeEncrypted())) {
+            throw new BusinessException(401, "恢复口令验证失败");
         }
 
         String kdfParamsJson;
@@ -288,9 +292,14 @@ public class AuthService {
     }
 
     public Object getRecoveryInfo(String username) {
+        // 始终返回 200，防止通过 HTTP 状态码枚举用户名
+        // 对于不存在的用户，所有字段返回空字符串
         Optional<User> userOpt = userRepository.findByUsername(username);
         if (userOpt.isEmpty()) {
-            throw new BusinessException(404, "用户不存在");
+            return Map.of(
+                    "recovery_data", "", "recovery_salt", "", "salt_enc", "",
+                    "challenge", "", "challenge_iv", ""
+            );
         }
 
         User user = userOpt.get();

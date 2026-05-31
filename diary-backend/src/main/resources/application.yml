@@ -40,13 +40,6 @@ app:
     max-file-size-mb: 10
     max-per-entry: 20
     unattached-ttl-hours: 24
-  rate-limit:
-    login-per-minute: 5
-    register-per-hour: 3
-    recovery-per-minute: 5
-    api-per-minute: 60
-    attachment-per-minute: 10
-
 logging:
   level:
     root: INFO

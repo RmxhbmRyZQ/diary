@@ -19,6 +19,8 @@ public interface AttachmentRepository extends JpaRepository<Attachment, String> 
 
     long countByDiaryId(String diaryId);
 
+    long countByDiaryIdAndUserId(String diaryId, String userId);
+
     @Modifying
     @Query("DELETE FROM Attachment a WHERE a.diaryId = :diaryId")
     void deleteAllByDiaryId(@Param("diaryId") String diaryId);

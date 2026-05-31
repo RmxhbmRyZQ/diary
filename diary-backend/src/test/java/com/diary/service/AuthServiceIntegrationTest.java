@@ -60,7 +60,6 @@ class AuthServiceIntegrationTest {
         req.setAuthKey(RAW_AUTH_KEY);
         req.setSaltAuth("salt-auth-base64");
         req.setEncryptedDek("encrypted-dek-base64");
-        req.setEncryptedDekRecovery("encrypted-dek-recovery-base64");
         req.setSaltEnc("salt-enc-base64");
         req.setKdfVersion(1);
         req.setKdfParams(Map.of("algorithm", "pbkdf2-sha256", "iterations", 600000));
@@ -81,7 +80,7 @@ class AuthServiceIntegrationTest {
         assertThat(passwordEncoder.matches(RAW_AUTH_KEY, found.getAuthKeyHash())).isTrue();
         assertThat(found.getSaltAuth()).isEqualTo("salt-auth-base64");
         assertThat(found.getEncryptedDek()).isEqualTo("encrypted-dek-base64");
-        assertThat(found.getEncryptedDekRecovery()).isEqualTo("encrypted-dek-recovery-base64");
+        assertThat(found.getEncryptedDekRecovery()).isNull(); // 离线恢复密钥已移除
         assertThat(found.getSaltEnc()).isEqualTo("salt-enc-base64");
         assertThat(found.getKdfVersion()).isEqualTo(1);
         assertThat(found.getKdfParams()).contains("pbkdf2-sha256");
@@ -183,7 +182,6 @@ class AuthServiceIntegrationTest {
         cpReq.setOldAuthKey(RAW_AUTH_KEY);
         cpReq.setNewAuthKeyHash("new-raw-password");
         cpReq.setNewEncryptedDek("new-encrypted-dek");
-        cpReq.setNewEncryptedDekRecovery("new-dek-recovery");
         cpReq.setNewSaltEnc("new-salt-enc");
         cpReq.setNewKdfParams(Map.of("algorithm", "pbkdf2-sha256", "iterations", 700000));
 
@@ -192,7 +190,7 @@ class AuthServiceIntegrationTest {
         User updated = userRepository.findById(userId).orElseThrow();
         assertThat(passwordEncoder.matches("new-raw-password", updated.getAuthKeyHash())).isTrue();
         assertThat(updated.getEncryptedDek()).isEqualTo("new-encrypted-dek");
-        assertThat(updated.getEncryptedDekRecovery()).isEqualTo("new-dek-recovery");
+        assertThat(updated.getEncryptedDekRecovery()).isNull(); // 离线恢复密钥已移除
         assertThat(updated.getSaltEnc()).isEqualTo("new-salt-enc");
         assertThat(updated.getKdfParams()).contains("700000");
 
@@ -228,12 +226,16 @@ class AuthServiceIntegrationTest {
         SetRecoveryRequest req = new SetRecoveryRequest();
         req.setRecoveryData("recovery-data-encrypted");
         req.setRecoverySalt("recovery-salt");
+        req.setChallenge("challenge-plaintext");
+        req.setEncryptedChallenge("encrypted-challenge");
 
         authService.setRecovery(userId, req);
 
         User updated = userRepository.findById(userId).orElseThrow();
         assertThat(updated.getRecoveryData()).isEqualTo("recovery-data-encrypted");
         assertThat(updated.getRecoverySalt()).isEqualTo("recovery-salt");
+        assertThat(updated.getRecoveryChallenge()).isEqualTo("challenge-plaintext");
+        assertThat(updated.getRecoveryChallengeEncrypted()).isEqualTo("encrypted-challenge");
     }
 
     @Test
@@ -244,6 +246,8 @@ class AuthServiceIntegrationTest {
         SetRecoveryRequest req = new SetRecoveryRequest();
         req.setRecoveryData("recovery-data-encrypted");
         req.setRecoverySalt("recovery-salt");
+        req.setChallenge("challenge-plaintext");
+        req.setEncryptedChallenge("encrypted-challenge");
         authService.setRecovery(userId, req);
 
         @SuppressWarnings("unchecked")
@@ -251,7 +255,7 @@ class AuthServiceIntegrationTest {
         assertThat(info.get("recovery_data")).isEqualTo("recovery-data-encrypted");
         assertThat(info.get("recovery_salt")).isEqualTo("recovery-salt");
         assertThat(info.get("salt_enc")).isEqualTo("salt-enc-base64");
-        assertThat(info.get("encrypted_dek_recovery")).isEqualTo("encrypted-dek-recovery-base64");
+        assertThat(info.get("challenge")).isEqualTo("challenge-plaintext");
     }
 
     @Test
@@ -261,6 +265,8 @@ class AuthServiceIntegrationTest {
         SetRecoveryRequest req = new SetRecoveryRequest();
         req.setRecoveryData("recovery-data-encrypted");
         req.setRecoverySalt("recovery-salt");
+        req.setChallenge("challenge-plaintext");
+        req.setEncryptedChallenge("encrypted-challenge");
         authService.setRecovery(userId, req);
 
         authService.deleteRecovery(userId, RAW_AUTH_KEY);
@@ -295,7 +301,6 @@ class AuthServiceIntegrationTest {
         req.setOldAuthKey("some-key");
         req.setNewAuthKeyHash("some-key");
         req.setNewEncryptedDek("dek");
-        req.setNewEncryptedDekRecovery("dekr");
         req.setNewSaltEnc("salt");
         req.setNewKdfParams(Map.of());
 

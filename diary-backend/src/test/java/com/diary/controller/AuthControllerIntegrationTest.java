@@ -90,7 +90,6 @@ class AuthControllerIntegrationTest {
                 "authKey", RAW_AUTH_KEY,
                 "saltAuth", "salt-auth-base64",
                 "encryptedDek", "encrypted-dek-base64",
-                "encryptedDekRecovery", "encrypted-dek-recovery-base64",
                 "saltEnc", "salt-enc-base64",
                 "kdfVersion", 1,
                 "kdfParams", Map.of("algorithm", "pbkdf2-sha256", "iterations", 600000)
@@ -282,7 +281,9 @@ class AuthControllerIntegrationTest {
 
         Map<String, String> body = Map.of(
                 "recoveryData", "recovery-data-encrypted",
-                "recoverySalt", "recovery-salt-value"
+                "recoverySalt", "recovery-salt-value",
+                "challenge", "challenge-plaintext",
+                "encryptedChallenge", "encrypted-challenge-value"
         );
 
         mockMvc.perform(put("/api/v1/auth/recovery")
@@ -295,6 +296,8 @@ class AuthControllerIntegrationTest {
         User updated = userRepository.findById(userId).orElseThrow();
         assertThat(updated.getRecoveryData()).isEqualTo("recovery-data-encrypted");
         assertThat(updated.getRecoverySalt()).isEqualTo("recovery-salt-value");
+        assertThat(updated.getRecoveryChallenge()).isEqualTo("challenge-plaintext");
+        assertThat(updated.getRecoveryChallengeEncrypted()).isEqualTo("encrypted-challenge-value");
     }
 
     @Test
@@ -303,7 +306,9 @@ class AuthControllerIntegrationTest {
 
         Map<String, String> body = Map.of(
                 "recoveryData", "recovery-data-encrypted",
-                "recoverySalt", "recovery-salt-value"
+                "recoverySalt", "recovery-salt-value",
+                "challenge", "challenge-plaintext",
+                "encryptedChallenge", "encrypted-challenge-value:test-iv"
         );
 
         mockMvc.perform(put("/api/v1/auth/recovery")
@@ -319,7 +324,16 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.recovery_data").value("recovery-data-encrypted"))
                 .andExpect(jsonPath("$.data.recovery_salt").value("recovery-salt-value"))
                 .andExpect(jsonPath("$.data.salt_enc").value("salt-enc-base64"))
-                .andExpect(jsonPath("$.data.encrypted_dek_recovery").value("encrypted-dek-recovery-base64"));
+                .andExpect(jsonPath("$.data.challenge").value("challenge-plaintext"))
+                .andExpect(jsonPath("$.data.challenge_iv").value("test-iv"));
+
+        // Also test: nonexistent user returns 200 with empty fields (anti-enumeration)
+        mockMvc.perform(get("/api/v1/auth/recovery")
+                        .param("username", "nonexistent-user"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.recovery_data").value(""))
+                .andExpect(jsonPath("$.data.salt_enc").value(""));
     }
 
     @Test
@@ -338,7 +352,9 @@ class AuthControllerIntegrationTest {
         String userId = registerUser();
         Map<String, String> body = Map.of(
                 "recoveryData", "recovery-data-encrypted",
-                "recoverySalt", "recovery-salt-value"
+                "recoverySalt", "recovery-salt-value",
+                "challenge", "challenge-plaintext",
+                "encryptedChallenge", "encrypted-challenge-with-iv:test-iv"
         );
         mockMvc.perform(put("/api/v1/auth/recovery")
                         .contentType("application/json")
