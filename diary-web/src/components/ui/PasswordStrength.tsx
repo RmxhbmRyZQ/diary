@@ -38,7 +38,7 @@ function evaluateStrength(password: string): StrengthResult {
 }
 
 export default function PasswordStrength({ password }: PasswordStrengthProps) {
-  const { level, label, color, width } = evaluateStrength(password);
+  const { level, label } = evaluateStrength(password);
 
   if (!password) return null;
 

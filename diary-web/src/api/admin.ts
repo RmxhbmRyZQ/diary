@@ -28,7 +28,7 @@ export async function adminLogin(username: string, password: string) {
     username,
     password,
   });
-  setAdminToken(response.data.token);
+  setAdminToken((response as { code: number; data: { token: string } }).data.token);
   return response;
 }
 

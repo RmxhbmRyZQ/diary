@@ -1,4 +1,4 @@
-import { MOOD_OPTIONS, type MoodValue } from '../../utils/constants';
+import { MOOD_OPTIONS } from '../../utils/constants';
 
 interface MoodPickerProps {
   value: string | null;

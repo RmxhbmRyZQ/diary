@@ -1,4 +1,4 @@
-import { WEATHER_OPTIONS, type WeatherValue } from '../../utils/constants';
+import { WEATHER_OPTIONS } from '../../utils/constants';
 
 interface WeatherPickerProps {
   value: string | null;

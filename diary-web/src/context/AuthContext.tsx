@@ -6,7 +6,6 @@ import {
   encryptDEK,
   decryptDEK,
   generateRandomBytes,
-  type KdfParams,
 } from '../crypto/cryptoService';
 import { arrayBufferToBase64, base64ToArrayBuffer } from '../crypto/utils';
 import * as authApi from '../api/auth';

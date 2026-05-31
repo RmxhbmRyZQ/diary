@@ -1,7 +1,10 @@
+部署流程.md
+
 diary-web/.claude/
 diary-web/.agents/
 diary-web/.idea/
 diary-web/node_modules/
+diary-web/dist/
 diary-web/skills-lock.json
 diary-web/需求文档.md
 diary-web/接口文档.md
@@ -10,6 +13,7 @@ diary-backend/.claude/
 diary-backend/target/
 diary-backend/.idea/
 diary-backend/attachments/
+diary-backend/src/main/resources/application-prod.yml
 diary-backend/需求文档.md
 diary-backend/接口文档.md
 diary-backend/交互过程.md
@@ -20,6 +24,7 @@ diary-android/.gradle/
 diary-android/.idea/
 diary-android/build/
 diary-android/app/build/
+diary-android/app/release/
 diary-android/target/
 diary-android/skills-lock.json
 diary-android/需求文档.md

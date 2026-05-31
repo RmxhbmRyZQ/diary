@@ -38,7 +38,7 @@ adminClient.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response;
       const apiError = new Error(data?.message || '请求失败');
-      (apiError as Record<string, unknown>).code = status;
+      (apiError as unknown as Record<string, unknown>).code = status;
       return Promise.reject(apiError);
     }
 

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { syncEntries, batchGetEntries, type SyncEntry } from '../api/entries';
 import { toBeijingISOString } from '../utils/timeUtils';
+import { getDB } from '../db/index';
 import {
   getAllEntries,
   putEntry,
@@ -58,7 +59,7 @@ export async function fullSync(username: string, userId: string, since?: string)
   // Clean up entries from other users on every sync
   const otherUserIds = localEntries.filter((e) => e.userId !== userId);
   if (otherUserIds.length > 0) {
-    const db = await (await import('../db/index')).getDB();
+    const db = await getDB();
     const tx = db.transaction('entries', 'readwrite');
     for (const e of otherUserIds) {
       await tx.store.delete(e.diaryId);

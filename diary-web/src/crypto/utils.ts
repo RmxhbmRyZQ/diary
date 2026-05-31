@@ -1,5 +1,5 @@
-export function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+export function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
@@ -13,13 +13,13 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return bytes.buffer;
+  return bytes.buffer as ArrayBuffer;
 }
 
 export function stringToArrayBuffer(str: string): ArrayBuffer {
   const encoder = new TextEncoder();
   const encoded = encoder.encode(str);
-  return encoded.buffer.slice(0, encoded.byteLength);
+  return encoded.buffer.slice(0, encoded.byteLength) as ArrayBuffer;
 }
 
 export function arrayBufferToString(buffer: ArrayBuffer): string {
@@ -32,7 +32,7 @@ export function hexToArrayBuffer(hex: string): ArrayBuffer {
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
   }
-  return bytes.buffer;
+  return bytes.buffer as ArrayBuffer;
 }
 
 export function arrayBufferToHex(buffer: ArrayBuffer): string {
@@ -46,5 +46,5 @@ export function concatArrayBuffers(a: ArrayBuffer, b: ArrayBuffer): ArrayBuffer 
   const result = new Uint8Array(a.byteLength + b.byteLength);
   result.set(new Uint8Array(a), 0);
   result.set(new Uint8Array(b), a.byteLength);
-  return result.buffer;
+  return result.buffer as ArrayBuffer;
 }
