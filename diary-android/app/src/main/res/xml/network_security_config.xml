@@ -6,5 +6,8 @@
         <domain includeSubdomains="true">10.142.31.6</domain>
         <domain includeSubdomains="true">106.14.222.120</domain>
         <domain includeSubdomains="true">localhost</domain>
+        <trust-anchors>
+            <certificates src="@raw/server_pyopenssl"/>
+        </trust-anchors>
     </domain-config>
 </network-security-config>

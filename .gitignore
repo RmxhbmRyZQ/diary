@@ -1,4 +1,4 @@
-部署流程.md
+ssl/
 
 diary-web/.claude/
 diary-web/.agents/
@@ -29,3 +29,4 @@ diary-android/target/
 diary-android/skills-lock.json
 diary-android/需求文档.md
 diary-android/接口文档.md
+diary-android/app/src/main/res/raw/server_pyopenssl.crt
