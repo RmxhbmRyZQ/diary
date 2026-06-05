@@ -7,7 +7,7 @@ import EntryCard from '../components/diary/EntryCard';
 import MoodPicker from '../components/diary/MoodPicker';
 import WeatherPicker from '../components/diary/WeatherPicker';
 import { MOOD_OPTIONS } from '../utils/constants';
-import { Plus, Search, Star, Filter, LogOut, BarChart3, Settings } from 'lucide-react';
+import { Plus, Search, Star, Filter, LogOut, BarChart3, Settings, Info } from 'lucide-react';
 
 type FilterMode = 'all' | 'favorites';
 
@@ -172,6 +172,13 @@ export default function DiaryListPage() {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => navigate('/about')}
+              className="p-2 hover:bg-warm-100 rounded-lg transition-colors"
+              title="关于"
+            >
+              <Info className="w-4 h-4 text-gray-400" />
+            </button>
             <button
               onClick={() => navigate('/statistics')}
               className="p-2 hover:bg-warm-100 rounded-lg transition-colors"

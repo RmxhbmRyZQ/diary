@@ -140,6 +140,9 @@ export default function LoginPage() {
               忘记密码？
             </Link>
           </div>
+          <div className="text-center text-sm">
+            <Link to="/about" className="text-gray-300 hover:text-gray-400">关于隐秘日记</Link>
+          </div>
         </form>
       </div>
     </div>

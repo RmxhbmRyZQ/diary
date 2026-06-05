@@ -9,6 +9,7 @@ import DiaryListPage from './pages/DiaryListPage';
 import EditorPage from './pages/EditorPage';
 import StatisticsPage from './pages/StatisticsPage';
 import SettingsPage from './pages/SettingsPage';
+import AboutPage from './pages/AboutPage';
 import AdminLoginPage from './pages/Admin/AdminLoginPage';
 import AdminLayout from './pages/Admin/AdminLayout';
 import AdminDashboardPage from './pages/Admin/AdminDashboardPage';
@@ -58,6 +59,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route path="/recovery" element={<GuestRoute><RecoveryPage /></GuestRoute>} />
         <Route path="/unlock" element={<UnlockRoute><UnlockPage /></UnlockRoute>} />
         <Route path="/" element={<ProtectedRoute><DiaryListPage /></ProtectedRoute>} />
