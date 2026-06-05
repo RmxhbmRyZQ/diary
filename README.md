@@ -1,6 +1,8 @@
 # 隐秘日记 (Secret Diary)
 
-基于零知识架构的加密日记应用，由 Claude + DeepSeek 协作实现（https://diary.flandre.online/）。
+基于零知识架构的加密日记应用，由 Claude + DeepSeek 协作实现。
+
+网站链接：https://diary.flandre.online/
 
 ## 项目简介
 
