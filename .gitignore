@@ -1,5 +1,7 @@
 ssl/
 
+backup_diary_db.sh
+
 diary-web/.claude/
 diary-web/.agents/
 diary-web/.idea/
@@ -16,7 +18,6 @@ diary-backend/attachments/
 diary-backend/src/main/resources/application-prod.yml
 diary-backend/需求文档.md
 diary-backend/接口文档.md
-diary-backend/交互过程.md
 
 diary-android/.claude/
 diary-android/.agents/

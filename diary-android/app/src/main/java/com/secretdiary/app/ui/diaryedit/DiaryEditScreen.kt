@@ -269,7 +269,7 @@ fun DiaryEditScreen(
                         viewModel.onContentChanged(newValue.text)
                     },
                     label = { Text("日记内容") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 1000.dp),
                     maxLines = Int.MAX_VALUE
                 )
                 Spacer(modifier = Modifier.height(16.dp))
