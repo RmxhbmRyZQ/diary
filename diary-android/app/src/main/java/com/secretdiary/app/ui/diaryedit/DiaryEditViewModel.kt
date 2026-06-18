@@ -176,13 +176,13 @@ class DiaryEditViewModel @Inject constructor(
             val originalBytes = inputStream.readBytes()
             inputStream.close()
 
-            val compressed = compressImage(originalBytes)
+            val (compressed, mimeType) = compressImage(originalBytes)
 
             val (ctB64, ivB64) = cryptoManager.encrypt(compressed, dek)
             val encryptedBytes = Base64Util.decode(ctB64)
             val sha256 = cryptoManager.sha256Hex(encryptedBytes)
 
-            val fileBody = encryptedBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
+            val fileBody = encryptedBytes.toRequestBody(mimeType.toMediaTypeOrNull())
             val filePart = MultipartBody.Part.createFormData("file", "encrypted_img", fileBody)
             val diaryIdBody = "00000000-0000-0000-0000-000000000000"
                 .toRequestBody("text/plain".toMediaTypeOrNull())
@@ -198,14 +198,14 @@ class DiaryEditViewModel @Inject constructor(
         }
     }
 
-    private fun compressImage(bytes: ByteArray): ByteArray {
+    private fun compressImage(bytes: ByteArray): Pair<ByteArray, String> {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+
+        if (options.outMimeType == "image/gif") return Pair(bytes, "image/gif")
+
         val isPng = options.outMimeType == "image/png"
-
-        if (options.outMimeType == "image/gif") return bytes
-
-        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return Pair(bytes, "image/jpeg")
 
         val maxSize = 1920
         val origW = bitmap.width
@@ -219,6 +219,7 @@ class DiaryEditViewModel @Inject constructor(
 
         val outputStream = ByteArrayOutputStream()
         val format = if (isPng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        val mimeType = if (isPng) "image/png" else "image/jpeg"
         var quality = if (isPng) 100 else 80
         bitmap.compress(format, quality, outputStream)
 
@@ -227,7 +228,7 @@ class DiaryEditViewModel @Inject constructor(
             bitmap.compress(Bitmap.CompressFormat.JPEG, 50, outputStream)
         }
 
-        return outputStream.toByteArray()
+        return Pair(outputStream.toByteArray(), mimeType)
     }
 
     fun saveDiary() {

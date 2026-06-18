@@ -149,7 +149,8 @@ class DiaryRepository @Inject constructor(
             val response = if (existing?.serverVersion != null) {
                 apiService.updateEntry(id, UpdateEntryRequest(
                     diaryDate = diaryDate, mood = mood, weather = weather, favorite = favorite,
-                    encryptedPayload = encryptedPayload, iv = iv, version = existing.serverVersion
+                    encryptedPayload = encryptedPayload, iv = iv, version = existing.serverVersion,
+                    attachmentIds = attachmentIds.takeIf { it.isNotEmpty() }
                 ))
             } else {
                 apiService.createEntry(CreateEntryRequest(
@@ -275,7 +276,8 @@ class DiaryRepository @Inject constructor(
             apiService.updateEntry(entry.id, UpdateEntryRequest(
                 diaryDate = entry.diaryDate, mood = entry.mood, weather = entry.weather,
                 favorite = entry.favorite, encryptedPayload = encryptedPayload, iv = iv,
-                version = entry.serverVersion
+                version = entry.serverVersion,
+                attachmentIds = attIds.takeIf { it.isNotEmpty() }
             ))
         } else {
             apiService.createEntry(CreateEntryRequest(
